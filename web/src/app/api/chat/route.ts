@@ -44,11 +44,25 @@ export async function POST(request: Request) {
   }
 
   try {
+    const userId = session?.user ? parseInt(session.user.id) : undefined;
+
+    // Check message limit for authenticated users
+    if (userId) {
+      const canSendMessage = await db.checkMessageLimit(userId);
+      if (!canSendMessage) {
+        return NextResponse.json({
+          error: "Weekly message limit reached. Please subscribe to continue.",
+          requiresSubscription: true
+        }, { status: 403 });
+      }
+      await db.updateWeeklyMessageCount(userId);
+    }
+
     // Save user message
     const userMessage = await db.createMessage(
       content,
       "user",
-      session?.user ? parseInt(session.user.id) : undefined
+      userId
     );
 
     // TODO: Integrate with actual AI service
@@ -56,7 +70,7 @@ export async function POST(request: Request) {
     const botResponse = await db.createMessage(
       "Thank you for your message. I am here to help.",
       "assistant",
-      session?.user ? parseInt(session.user.id) : undefined
+      userId
     );
 
     return NextResponse.json({

@@ -8,14 +8,18 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  password      String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  messageCount  Int       @default(0)
-  messages      Message[]
+  id                String    @id @default(cuid())
+  name              String?
+  email             String    @unique
+  password          String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  messageCount      Int       @default(0)
+  weeklyMessageCount Int      @default(0)
+  weeklyResetDate   DateTime  @default(now())
+  isSubscribed      Boolean   @default(false)
+  subscriptionEnds  DateTime?
+  messages          Message[]
 }
 
 model Message {

@@ -18,6 +18,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showSignUpModal, setShowSignUpModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [guestMessageCount, setGuestMessageCount] = useState(0);
 
   // Load messages and guest message count from localStorage on mount
@@ -114,6 +115,11 @@ export default function Home() {
 
       const data = await response.json();
       
+      if (response.status === 403 && data.requiresSubscription) {
+        setShowSubscriptionModal(true);
+        return;
+      }
+
       // Add the bot response to messages
       setMessages((prev) => [
         ...prev,
