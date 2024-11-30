@@ -58,17 +58,44 @@ export default function Home() {
       }
     }
 
-    // TODO: Implement API call for chat response
-    // Simulate API response for now
-    setTimeout(() => {
-      const botResponse: Message = {
-        id: Date.now().toString(),
-        content: "This is a simulated response. Please sign up to chat with the AI.",
-        role: "assistant",
-      };
-      setMessages((prev) => [...prev, botResponse]);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content: input }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
+
+      const data = await response.json();
+      
+      // Add the bot response to messages
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: data.messages[1].id.toString(),
+          content: data.messages[1].content,
+          role: "assistant",
+        },
+      ]);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      // Add error message to chat
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          content: "Sorry, there was an error processing your message.",
+          role: "assistant",
+        },
+      ]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
