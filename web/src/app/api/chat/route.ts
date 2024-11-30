@@ -3,6 +3,22 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import db from "@/lib/db";
 
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user ? parseInt(session.user.id) : undefined;
+    const messages = await db.getMessages(userId);
+    
+    return NextResponse.json({ messages });
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch messages" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const { content } = await request.json();

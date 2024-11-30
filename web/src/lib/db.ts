@@ -37,10 +37,14 @@ export const db = {
     return result.rows[0];
   },
 
-  async getUserMessages(userId: number) {
+  async getMessages(userId?: number) {
+    const query = userId 
+      ? 'SELECT * FROM messages WHERE user_id = $1 ORDER BY created_at ASC'
+      : 'SELECT * FROM messages WHERE user_id IS NULL ORDER BY created_at ASC LIMIT 50';
+    
     const result = await pool.query<Message>(
-      'SELECT * FROM messages WHERE user_id = $1 ORDER BY created_at ASC',
-      [userId]
+      query,
+      userId ? [userId] : []
     );
     return result.rows;
   },

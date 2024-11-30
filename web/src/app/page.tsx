@@ -20,8 +20,27 @@ export default function Home() {
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [guestMessageCount, setGuestMessageCount] = useState(0);
 
-  // Load guest message count from localStorage on mount
+  // Load messages and guest message count from localStorage on mount
   useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        const response = await fetch("/api/chat");
+        if (!response.ok) {
+          throw new Error("Failed to fetch messages");
+        }
+        const data = await response.json();
+        setMessages(data.messages.map((msg: any) => ({
+          id: msg.id.toString(),
+          content: msg.content,
+          role: msg.role,
+        })));
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+      }
+    };
+
+    fetchMessages();
+    
     const count = localStorage.getItem("guestMessageCount");
     if (count) {
       setGuestMessageCount(parseInt(count));
