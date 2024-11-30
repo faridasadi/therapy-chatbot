@@ -1,12 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.ext.declarative import declarative_base
-from config import POSTGRES_URI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from db import Base, engine, get_db_session
+import analytics
 
 # Initialize FastAPI app
 app = FastAPI(title="Therapyyy Bot API")
+
+# Initialize templates
+templates = Jinja2Templates(directory="templates")
 
 # Add CORS middleware
 app.add_middleware(
@@ -17,28 +21,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database setup
-engine = create_engine(POSTGRES_URI)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Dependency for database sessions
-async def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.on_event("startup")
 async def startup():
     # Create database tables
     Base.metadata.create_all(bind=engine)
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Render the analytics dashboard."""
+    context = {
+        "request": request,  # Required by Jinja2Templates
+        "metrics": analytics.get_subscription_metrics(),
+        "user_growth": analytics.get_user_growth_data(),
+        "message_activity": analytics.get_message_activity_data(),
+        "theme_distribution": analytics.get_theme_distribution(),
+        "sentiment_data": analytics.get_sentiment_over_time()
+    }
+    return templates.TemplateResponse("dashboard.html", context)
+
 @app.get("/")
 async def index():
     return {"status": "healthy", "message": "Therapyyy Bot Server is running"}
-
-# Export for use in other modules
-def get_db_session():
-    return SessionLocal()
