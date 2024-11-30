@@ -186,8 +186,12 @@ class BotApplication:
         while True:
             try:
                 await self.bot.send_chat_action(chat_id=chat_id, action="typing")
-                await asyncio.sleep(4)  # Sleep for 4 seconds before sending again
+                await asyncio.sleep(3)  # Reduce from 4 to 3 seconds
             except asyncio.CancelledError:
+                self.debug_print(f"Typing action cancelled for chat {chat_id}")
+                break
+            except Exception as e:
+                self.debug_print(f"Error sending typing action: {str(e)}")
                 break
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,11 +262,13 @@ class BotApplication:
             try:
                 self.debug_print(f"Requesting AI response with personalization")
                 # Start typing indicator
-                typing_task = asyncio.create_task(self.send_typing_action(update.effective_chat.id))
-                
+                typing_task = None
                 try:
+                    typing_task = asyncio.create_task(self.send_typing_action(update.effective_chat.id))
+                    self.debug_print("Started typing indicator")
+                    
                     response, theme, sentiment = get_therapy_response(message_text, user_id)
-                    self.debug_print(f"Received AI response - Theme: {theme}, Sentiment: {sentiment}")
+                    self.debug_print("Got AI response, stopping typing indicator")
                     
                     # Update message with theme and sentiment
                     try:
@@ -277,13 +283,11 @@ class BotApplication:
                             db.commit()
                     finally:
                         db.close()
-                        
-                    # Cancel typing indicator
-                    typing_task.cancel()
-                except Exception as e:
-                    # Make sure to cancel typing indicator on error
-                    typing_task.cancel()
-                    raise
+                finally:
+                    if typing_task:
+                        typing_task.cancel()
+                        await asyncio.sleep(0.1)  # Small delay to ensure cancellation
+                        self.debug_print("Typing indicator cancelled")
                 
             except Exception as e:
                 self.debug_print(f"Error getting AI response: {str(e)}")
