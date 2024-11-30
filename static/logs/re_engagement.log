@@ -76,3 +76,16 @@
 2024-11-30 12:46:26,115 - re_engagement - INFO - Starting weekly reset notification process
 2024-11-30 12:46:26,606 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-11-30 12:46:26,607 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-11-30 12:47:26,838 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-11-30 12:47:27,312 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-11-30 12:47:27,312 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-11-30 12:48:27,545 - re_engagement - INFO - Starting subscription reminder process
+2024-11-30 12:48:28,013 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-11-30 12:48:28,014 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-11-30 12:48:28,246 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-11-30 12:48:28,246 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-11-30 12:48:54,784 - re_engagement - INFO - Starting re-engagement system
+2024-11-30 12:48:54,784 - re_engagement - INFO - Beginning re-engagement cycle
+2024-11-30 12:48:54,784 - re_engagement - INFO - Starting weekly reset notification process
+2024-11-30 12:48:55,253 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-11-30 12:48:55,253 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0

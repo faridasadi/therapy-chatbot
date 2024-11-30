@@ -211,6 +211,16 @@ class BotApplication:
             return
         
         try:
+            # Send typing indicator immediately
+            try:
+                await context.bot.send_chat_action(
+                    chat_id=update.effective_chat.id,
+                    action="typing"
+                )
+                self.debug_print("Sent typing indicator")
+            except Exception as e:
+                self.debug_print(f"Error sending typing indicator: {str(e)}")
+
             # Test database connection
             try:
                 user = get_or_create_user(user_id)
@@ -251,13 +261,6 @@ class BotApplication:
             # Get AI response with theme analysis
             try:
                 self.debug_print(f"Requesting AI response with personalization")
-                # Send typing indicator
-                await context.bot.send_chat_action(
-                    chat_id=update.effective_chat.id,
-                    action="typing"
-                )
-                self.debug_print("Sent typing indicator")
-
                 # Get AI response
                 response, theme, sentiment = get_therapy_response(message_text, user_id)
                 self.debug_print("Got AI response")
