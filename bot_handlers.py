@@ -32,14 +32,35 @@ class BotApplication:
         self.application = None
         
     async def initialize(self):
-        print("Initializing bot application...")
+        print("[Bot Init] Starting initialization...")
+        
+        # Verify bot token
+        if not TELEGRAM_TOKEN:
+            raise ValueError("[Bot Init] ERROR: Telegram token is empty!")
+        
+        token_preview = TELEGRAM_TOKEN[:6] + "..." + TELEGRAM_TOKEN[-4:]
+        print(f"[Bot Init] Using bot token: {token_preview}")
+        
         self.application = Application.builder().token(TELEGRAM_TOKEN).build()
         
+        # Verify bot identity
+        try:
+            bot_info = await self.application.bot.get_me()
+            print(f"[Bot Init] Successfully authenticated as @{bot_info.username}")
+            print(f"[Bot Init] Bot ID: {bot_info.id}")
+            print(f"[Bot Init] Bot name: {bot_info.first_name}")
+        except Exception as e:
+            print("[Bot Init] ERROR: Failed to verify bot identity!")
+            print(f"[Bot Init] Error type: {type(e).__name__}")
+            print(f"[Bot Init] Error details: {str(e)}")
+            raise
+        
         # Add update handler to log all updates
+        print("[Bot Init] Registering update logger...")
         self.application.add_handler(MessageHandler(filters.ALL, self.log_update), -1)
         
         # Add command handlers
-        print("Registering command handlers...")
+        print("[Bot Init] Registering command handlers...")
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("subscribe", self.subscribe_command))
@@ -47,18 +68,22 @@ class BotApplication:
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
         # Add error handler
-        print("Registering error handler...")
+        print("[Bot Init] Registering error handler...")
         self.application.add_error_handler(self.error_handler)
         
-        print("Bot application initialization completed")
+        print("[Bot Init] Initialization completed successfully")
         await self.application.initialize()
 
     @staticmethod
     async def log_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Log any update received from Telegram."""
+        from datetime import datetime
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
         try:
             user_id = update.effective_user.id if update.effective_user else "Unknown"
             update_type = "Unknown"
+            update_id = update.update_id if hasattr(update, 'update_id') else "No ID"
             
             if update.message:
                 if update.message.text:
@@ -76,11 +101,29 @@ class BotApplication:
                 update_type = "Callback Query"
             elif update.pre_checkout_query:
                 update_type = "Pre-Checkout Query"
-                
-            print(f"Received update - Type: {update_type}, User ID: {user_id}")
+            
+            # Log detailed update information
+            print(f"\n[Update Log {timestamp}]")
+            print(f"Update ID: {update_id}")
+            print(f"Type: {update_type}")
+            print(f"User ID: {user_id}")
+            print(f"Raw Update Object:")
+            print(f"{update.to_dict()}")
+            
+            # Mark update as processed
+            print(f"[Success] Update {update_id} processed successfully")
+            return True
             
         except Exception as e:
-            print(f"Error logging update: {str(e)}")
+            print(f"[Error {timestamp}] Failed to log update:")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error details: {str(e)}")
+            if update:
+                try:
+                    print(f"Partial update data: {update.to_dict()}")
+                except:
+                    print("Could not serialize update data")
+            return False
     
     @staticmethod
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,8 +181,33 @@ class BotApplication:
 
     @staticmethod
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        message_text = update.message.text
+        from datetime import datetime
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
+        # Initial message receipt validation
+        try:
+            if not update.effective_user:
+                print(f"[Message Handler {timestamp}] ERROR: No effective user in update")
+                return
+                
+            if not update.message:
+                print(f"[Message Handler {timestamp}] ERROR: No message in update")
+                return
+                
+            user_id = update.effective_user.id
+            message_text = update.message.text
+            message_id = update.message.message_id
+            
+            print(f"[Message Handler {timestamp}] Starting message processing:")
+            print(f"Message ID: {message_id}")
+            print(f"From User: {user_id}")
+            print(f"Content Length: {len(message_text) if message_text else 0}")
+            
+        except Exception as e:
+            print(f"[Message Handler {timestamp}] CRITICAL: Failed to extract message details")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error details: {str(e)}")
+            return
         
         try:
             print(f"[Message Handler] Processing message from user {user_id}")
