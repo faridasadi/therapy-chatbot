@@ -32,9 +32,14 @@ class BotApplication:
         self.application = None
         
     async def initialize(self):
+        print("Initializing bot application...")
         self.application = Application.builder().token(TELEGRAM_TOKEN).build()
         
-        # Add handlers
+        # Add update handler to log all updates
+        self.application.add_handler(MessageHandler(filters.ALL, self.log_update), -1)
+        
+        # Add command handlers
+        print("Registering command handlers...")
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("subscribe", self.subscribe_command))
@@ -42,9 +47,40 @@ class BotApplication:
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
         # Add error handler
+        print("Registering error handler...")
         self.application.add_error_handler(self.error_handler)
         
+        print("Bot application initialization completed")
         await self.application.initialize()
+
+    @staticmethod
+    async def log_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Log any update received from Telegram."""
+        try:
+            user_id = update.effective_user.id if update.effective_user else "Unknown"
+            update_type = "Unknown"
+            
+            if update.message:
+                if update.message.text:
+                    if update.message.text.startswith('/'):
+                        update_type = f"Command: {update.message.text.split()[0]}"
+                    else:
+                        update_type = "Text Message"
+                elif update.message.photo:
+                    update_type = "Photo"
+                elif update.message.document:
+                    update_type = "Document"
+                elif update.message.voice:
+                    update_type = "Voice"
+            elif update.callback_query:
+                update_type = "Callback Query"
+            elif update.pre_checkout_query:
+                update_type = "Pre-Checkout Query"
+                
+            print(f"Received update - Type: {update_type}, User ID: {user_id}")
+            
+        except Exception as e:
+            print(f"Error logging update: {str(e)}")
     
     @staticmethod
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,50 +142,89 @@ class BotApplication:
         message_text = update.message.text
         
         try:
-            print(f"Handling message from user {user_id}: {message_text[:20]}...")
+            print(f"[Message Handler] Processing message from user {user_id}")
+            print(f"[Message Handler] Message content: {message_text[:50]}...")
             
-            # Save incoming message
-            save_message(user_id, message_text, True)
-            print(f"Saved incoming message for user {user_id}")
+            try:
+                # Echo the message back immediately to confirm receipt
+                await update.message.reply_text(
+                    "Message received! Let me think about that...",
+                    quote=True
+                )
+                print(f"[Message Handler] Sent acknowledgment to user {user_id}")
+            except TelegramError as e:
+                print(f"[Message Handler] Failed to send acknowledgment: {str(e)}")
             
-            # Check message limits
-            can_respond, remaining = increment_message_count(user_id)
-            print(f"Message limit check for user {user_id}: can_respond={can_respond}, remaining={remaining}")
+            try:
+                # Save incoming message
+                save_message(user_id, message_text, True)
+                print(f"[Message Handler] Saved incoming message for user {user_id}")
+            except Exception as e:
+                print(f"[Message Handler] Error saving message: {str(e)}")
+                raise
             
-            if not can_respond:
-                print(f"User {user_id} reached message limit, showing subscription prompt")
-                user = get_or_create_user(user_id)
-                user.subscription_prompt_views += 1
-                db.session.commit()
-                await update.message.reply_text(SUBSCRIPTION_PROMPT)
-                return
+            try:
+                # Check message limits
+                can_respond, remaining = increment_message_count(user_id)
+                print(f"[Message Handler] Message limit check: can_respond={can_respond}, remaining={remaining}")
+                
+                if not can_respond:
+                    print(f"[Message Handler] User {user_id} reached message limit")
+                    user = get_or_create_user(user_id)
+                    user.subscription_prompt_views += 1
+                    db.session.commit()
+                    await update.message.reply_text(SUBSCRIPTION_PROMPT)
+                    return
+            except Exception as e:
+                print(f"[Message Handler] Error checking message limits: {str(e)}")
+                raise
             
-            print(f"Getting AI response for user {user_id}")
-            # Get AI response
-            response = get_therapy_response(message_text)
+            try:
+                print(f"[Message Handler] Requesting AI response for user {user_id}")
+                # Get AI response
+                response = get_therapy_response(message_text)
+                print(f"[Message Handler] Received AI response: {response[:50]}...")
+            except Exception as e:
+                print(f"[Message Handler] Error getting AI response: {str(e)}")
+                raise
             
-            # Save bot response
-            save_message(user_id, response, False)
-            print(f"Saved bot response for user {user_id}")
+            try:
+                # Save bot response
+                save_message(user_id, response, False)
+                print(f"[Message Handler] Saved bot response for user {user_id}")
+            except Exception as e:
+                print(f"[Message Handler] Error saving bot response: {str(e)}")
+                raise
             
-            # Send response
-            await update.message.reply_text(response)
-            print(f"Sent response to user {user_id}")
+            try:
+                # Send response
+                await update.message.reply_text(response)
+                print(f"[Message Handler] Sent AI response to user {user_id}")
+            except TelegramError as e:
+                print(f"[Message Handler] Error sending response: {str(e)}")
+                raise
             
             # Notify about remaining messages if close to limit
             if 0 < remaining <= 5:
-                print(f"Sending remaining messages notification to user {user_id}: {remaining} messages left")
-                await update.message.reply_text(
-                    f"You have {remaining} free messages remaining. "
-                    "Consider subscribing for unlimited access!"
-                )
+                try:
+                    print(f"[Message Handler] Sending remaining messages notification: {remaining} messages")
+                    await update.message.reply_text(
+                        f"You have {remaining} free messages remaining. "
+                        "Consider subscribing for unlimited access!"
+                    )
+                except TelegramError as e:
+                    print(f"[Message Handler] Error sending remaining messages notification: {str(e)}")
                 
         except Exception as e:
-            print(f"Error handling message from user {user_id}: {str(e)}")
-            # Don't let the error break the event loop
-            await update.message.reply_text(
-                "I apologize, but I encountered an error processing your message. Please try again."
-            )
+            print(f"[Message Handler] Critical error processing message from user {user_id}:")
+            print(f"[Message Handler] Error type: {type(e).__name__}")
+            print(f"[Message Handler] Error details: {str(e)}")
+            try:
+                await update.message.reply_text(
+                    "I apologize, but I encountered an error processing your message. Please try again."
+                )
+            except TelegramError as send_error:
+                print(f"[Message Handler] Failed to send error message: {str(send_error)}")
 
     @staticmethod
     async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -12,24 +12,52 @@ async def run_flask():
 
 async def run_bot():
     try:
-        print("Starting Therapyyy bot initialization...")
+        print("[Bot] Starting Therapyyy bot initialization...")
         bot_app = create_bot_application()
-        print("Bot application created, initializing...")
-        await bot_app.initialize()
-        print("Bot initialization completed successfully")
-        print("Starting bot...")
-        await bot_app.start()
-        print("Bot is now running and ready to handle commands!")
+        print("[Bot] Bot application instance created")
         
-        # Keep the bot running
+        print("[Bot] Initializing bot application and handlers...")
+        await bot_app.initialize()
+        print("[Bot] Bot initialization completed successfully")
+        
+        print("[Bot] Starting bot in polling mode...")
+        start_time = asyncio.get_event_loop().time()
+        await bot_app.start()
+        print("[Bot] Bot polling started successfully!")
+        print("[Bot] Bot is now running and ready to handle commands!")
+        
+        # Keep the bot running and monitor its health
         while True:
-            print("Bot heartbeat - Still running")
+            current_time = asyncio.get_event_loop().time()
+            uptime = int(current_time - start_time)
+            hours = uptime // 3600
+            minutes = (uptime % 3600) // 60
+            seconds = uptime % 60
+            
+            print(f"[Bot] Heartbeat - Uptime: {hours}h {minutes}m {seconds}s")
+            print("[Bot] Polling is active, waiting for updates...")
+            
+            try:
+                # Check if the bot is still responsive
+                me = await bot_app.application.bot.get_me()
+                print(f"[Bot] Bot health check passed - @{me.username} is responsive")
+            except Exception as e:
+                print(f"[Bot] Warning: Bot health check failed - {str(e)}")
+                print("[Bot] Attempting to maintain connection...")
+            
             await asyncio.sleep(300)  # Log heartbeat every 5 minutes
             
     except Exception as e:
-        print(f"CRITICAL ERROR - Bot initialization failed: {e}")
+        print(f"[Bot] CRITICAL ERROR - Bot initialization/runtime failed:")
+        print(f"[Bot] Error type: {type(e).__name__}")
+        print(f"[Bot] Error details: {str(e)}")
         if 'bot_app' in locals():
-            await bot_app.stop()
+            print("[Bot] Attempting graceful shutdown...")
+            try:
+                await bot_app.stop()
+                print("[Bot] Bot stopped successfully")
+            except Exception as stop_error:
+                print(f"[Bot] Error during shutdown: {str(stop_error)}")
         raise
 
 async def cleanup(signal_=None):
