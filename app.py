@@ -21,3 +21,7 @@ db.init_app(app)
 with app.app_context():
     import models
     db.create_all()
+@app.route('/')
+def index():
+    return {"status": "healthy", "message": "Therapyyy Bot Server is running"}
+
