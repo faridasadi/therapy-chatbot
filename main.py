@@ -75,9 +75,16 @@ async def main():
         bot_app = create_bot_application()
         await bot_app.initialize()
         
+        # Import re-engagement system
+        from re_engagement import run_re_engagement_system
+        
         # Run the bot
         print("Starting Telegram bot...")
         await bot_app.start()
+        
+        # Start re-engagement system
+        print("Starting re-engagement system...")
+        re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.bot))
         
         # Keep the main loop running
         while True:
