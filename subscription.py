@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from app import db
+from sqlalchemy.orm import Session
+from app import get_db_session
 from models import User, Subscription
 from config import (
     SUBSCRIPTION_PRICE,
@@ -25,8 +26,9 @@ def generate_payment_invoice(user_id: int) -> dict:
         return None
 
 def create_subscription(user_id: int, payment_id: str) -> bool:
+    db = get_db_session()
     try:
-        user = User.query.get(user_id)
+        user = db.query(User).get(user_id)
         if not user:
             return False
             
@@ -42,21 +44,24 @@ def create_subscription(user_id: int, payment_id: str) -> bool:
         user.is_subscribed = True
         user.subscription_end = subscription.end_date
         
-        db.session.add(subscription)
-        db.session.commit()
+        db.add(subscription)
+        db.commit()
         return True
         
     except Exception:
-        db.session.rollback()
+        db.rollback()
         return False
+    finally:
+        db.close()
 
 def cancel_subscription(user_id: int) -> bool:
+    db = get_db_session()
     try:
-        user = User.query.get(user_id)
+        user = db.query(User).get(user_id)
         if not user:
             return False
             
-        subscription = Subscription.query.filter_by(
+        subscription = db.query(Subscription).filter_by(
             user_id=user_id,
             status='active'
         ).first()
@@ -65,10 +70,12 @@ def cancel_subscription(user_id: int) -> bool:
             subscription.status = 'cancelled'
             user.is_subscribed = False
             user.subscription_end = datetime.utcnow()
-            db.session.commit()
+            db.commit()
             
         return True
         
     except Exception:
-        db.session.rollback()
+        db.rollback()
         return False
+    finally:
+        db.close()

@@ -1,27 +1,44 @@
-import os
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.declarative import declarative_base
+from config import POSTGRES_URI
 
-class Base(DeclarativeBase):
-    pass
+# Initialize FastAPI app
+app = FastAPI(title="Therapyyy Bot API")
 
-db = SQLAlchemy(model_class=Base)
-app = Flask(__name__)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
-app.secret_key = os.urandom(24)
+# Database setup
+engine = create_engine(POSTGRES_URI)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-db.init_app(app)
+# Dependency for database sessions
+async def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-with app.app_context():
-    import models
-    db.create_all()
-@app.route('/')
-def index():
+@app.on_event("startup")
+async def startup():
+    # Create database tables
+    Base.metadata.create_all(bind=engine)
+
+@app.get("/")
+async def index():
     return {"status": "healthy", "message": "Therapyyy Bot Server is running"}
 
+# Export for use in other modules
+def get_db_session():
+    return SessionLocal()
