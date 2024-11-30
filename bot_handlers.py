@@ -255,16 +255,31 @@ class BotApplication:
                 self.debug_print(f"Error checking message limits: {str(e)}")
                 raise
             
-            # Get AI response
+            # Get AI response with theme analysis
             try:
-                self.debug_print(f"Requesting AI response")
-                response = get_therapy_response(message_text)
-                self.debug_print(f"Received AI response")
+                self.debug_print(f"Requesting AI response with personalization")
+                response, theme, sentiment = get_therapy_response(message_text, user_id)
+                self.debug_print(f"Received AI response - Theme: {theme}, Sentiment: {sentiment}")
+                
+                # Update message with theme and sentiment
+                try:
+                    db = get_db_session()
+                    latest_message = (db.query(Message)
+                        .filter(Message.user_id == user_id)
+                        .order_by(Message.timestamp.desc())
+                        .first())
+                    if latest_message:
+                        latest_message.theme = theme
+                        latest_message.sentiment_score = sentiment
+                        db.commit()
+                finally:
+                    db.close()
+                
             except Exception as e:
                 self.debug_print(f"Error getting AI response: {str(e)}")
                 raise
             
-            # Save bot response
+            # Save bot response with theme
             try:
                 save_message(user_id, response, False)
                 self.debug_print(f"Saved bot response")

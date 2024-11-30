@@ -16,9 +16,23 @@ class User(Base):
     weekly_messages_count = Column(Integer, default=0)
     last_message_reset = Column(DateTime, default=datetime.utcnow)
     subscription_prompt_views = Column(Integer, default=0)
+    interaction_style = Column(String(50), default='balanced')  # Store user's preferred interaction style
     
     messages = relationship("Message", back_populates="user")
     subscriptions = relationship("Subscription", back_populates="user")
+    themes = relationship("UserTheme", back_populates="user")
+
+class UserTheme(Base):
+    __tablename__ = 'user_theme'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, ForeignKey('user.id'))
+    theme = Column(String(100))
+    sentiment = Column(Float)  # Store sentiment score for the theme
+    frequency = Column(Integer, default=1)
+    last_mentioned = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User", back_populates="themes")
 
 class Message(Base):
     __tablename__ = 'message'
@@ -28,6 +42,8 @@ class Message(Base):
     content = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
     is_from_user = Column(Boolean)
+    theme = Column(String(100), nullable=True)  # Store identified theme
+    sentiment_score = Column(Float, nullable=True)  # Store message sentiment
     
     user = relationship("User", back_populates="messages")
 
