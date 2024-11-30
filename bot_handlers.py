@@ -105,33 +105,50 @@ class BotApplication:
         user_id = update.effective_user.id
         message_text = update.message.text
         
-        # Save incoming message
-        save_message(user_id, message_text, True)
-        
-        # Check message limits
-        can_respond, remaining = increment_message_count(user_id)
-        
-        if not can_respond:
-            user = get_or_create_user(user_id)
-            user.subscription_prompt_views += 1
-            db.session.commit()
-            await update.message.reply_text(SUBSCRIPTION_PROMPT)
-            return
-        
-        # Get AI response
-        response = get_therapy_response(message_text)
-        
-        # Save bot response
-        save_message(user_id, response, False)
-        
-        # Send response
-        await update.message.reply_text(response)
-        
-        # Notify about remaining messages if close to limit
-        if 0 < remaining <= 5:
+        try:
+            print(f"Handling message from user {user_id}: {message_text[:20]}...")
+            
+            # Save incoming message
+            save_message(user_id, message_text, True)
+            print(f"Saved incoming message for user {user_id}")
+            
+            # Check message limits
+            can_respond, remaining = increment_message_count(user_id)
+            print(f"Message limit check for user {user_id}: can_respond={can_respond}, remaining={remaining}")
+            
+            if not can_respond:
+                print(f"User {user_id} reached message limit, showing subscription prompt")
+                user = get_or_create_user(user_id)
+                user.subscription_prompt_views += 1
+                db.session.commit()
+                await update.message.reply_text(SUBSCRIPTION_PROMPT)
+                return
+            
+            print(f"Getting AI response for user {user_id}")
+            # Get AI response
+            response = get_therapy_response(message_text)
+            
+            # Save bot response
+            save_message(user_id, response, False)
+            print(f"Saved bot response for user {user_id}")
+            
+            # Send response
+            await update.message.reply_text(response)
+            print(f"Sent response to user {user_id}")
+            
+            # Notify about remaining messages if close to limit
+            if 0 < remaining <= 5:
+                print(f"Sending remaining messages notification to user {user_id}: {remaining} messages left")
+                await update.message.reply_text(
+                    f"You have {remaining} free messages remaining. "
+                    "Consider subscribing for unlimited access!"
+                )
+                
+        except Exception as e:
+            print(f"Error handling message from user {user_id}: {str(e)}")
+            # Don't let the error break the event loop
             await update.message.reply_text(
-                f"You have {remaining} free messages remaining. "
-                "Consider subscribing for unlimited access!"
+                "I apologize, but I encountered an error processing your message. Please try again."
             )
 
     @staticmethod

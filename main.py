@@ -1,11 +1,14 @@
 import asyncio
-from threading import Thread
-from telegram import Update
+import signal
+from hypercorn.asyncio import serve
+from hypercorn.config import Config
 from app import app
 from bot_handlers import create_bot_application
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8000)
+async def run_flask():
+    config = Config()
+    config.bind = ["0.0.0.0:8000"]
+    await serve(app, config)
 
 async def run_bot():
     try:
@@ -17,49 +20,52 @@ async def run_bot():
         print("Starting bot...")
         await bot_app.start()
         print("Bot is now running and ready to handle commands!")
-        return bot_app
+        
+        # Keep the bot running
+        while True:
+            print("Bot heartbeat - Still running")
+            await asyncio.sleep(300)  # Log heartbeat every 5 minutes
+            
     except Exception as e:
         print(f"CRITICAL ERROR - Bot initialization failed: {e}")
         if 'bot_app' in locals():
             await bot_app.stop()
         raise
 
-def run_async_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+async def cleanup(signal_=None):
+    if signal_:
+        print(f"Received exit signal {signal_.name}...")
+    print("Cleaning up...")
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    [task.cancel() for task in tasks]
+    print("Waiting for tasks to complete...")
+    await asyncio.gather(*tasks, return_exceptions=True)
+    print("Cleanup completed")
+
+async def main():
+    # Setup signal handlers
+    loop = asyncio.get_event_loop()
+    signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+    for s in signals:
+        loop.add_signal_handler(
+            s,
+            lambda s=s: asyncio.create_task(cleanup(signal_=s))
+        )
+
     try:
-        print("Setting up async event loop for bot...")
-        loop.run_until_complete(run_bot())
-    except KeyboardInterrupt:
-        print("Bot shutdown requested via KeyboardInterrupt")
+        # Start both Flask and bot
+        await asyncio.gather(
+            run_flask(),
+            run_bot(),
+            return_exceptions=True
+        )
     except Exception as e:
-        print(f"Fatal error in bot async loop: {e}")
+        print(f"Fatal error in main loop: {e}")
     finally:
-        print("Closing bot event loop...")
-        loop.close()
-
-def run_flask_in_thread():
-    Thread(target=run_flask, daemon=True).start()
-
-async def main_loop():
-    while True:
-        await asyncio.sleep(1)
+        await cleanup()
 
 if __name__ == "__main__":
-    # Start Flask in a separate thread
-    run_flask_in_thread()
-    
-    # Run the bot in a separate thread with its own event loop
-    bot_thread = Thread(target=run_async_bot, daemon=True)
-    bot_thread.start()
-    
     try:
-        # Create a new event loop for the main thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        # Run the main loop
-        loop.run_until_complete(main_loop())
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("Shutting down gracefully...")
-    finally:
-        loop.close()
