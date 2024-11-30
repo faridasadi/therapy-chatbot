@@ -182,6 +182,14 @@ class BotApplication:
             self.debug_print(f"Error in status command: {str(e)}")
             await update.message.reply_text("An error occurred. Please try again.")
 
+    async def send_typing_action(self, chat_id):
+        while True:
+            try:
+                await self.bot.send_chat_action(chat_id=chat_id, action="typing")
+                await asyncio.sleep(4)  # Sleep for 4 seconds before sending again
+            except asyncio.CancelledError:
+                break
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
         
@@ -249,9 +257,8 @@ class BotApplication:
             # Get AI response with theme analysis
             try:
                 self.debug_print(f"Requesting AI response with personalization")
-                # Send "Thinking..." message
-                thinking_msg = await update.message.reply_text("Thinking...")
-                self.debug_print(f"Sent 'Thinking...' message")
+                # Start typing indicator
+                typing_task = asyncio.create_task(self.send_typing_action(update.effective_chat.id))
                 
                 try:
                     response, theme, sentiment = get_therapy_response(message_text, user_id)
@@ -271,18 +278,11 @@ class BotApplication:
                     finally:
                         db.close()
                         
-                    # Delete the "Thinking..." message
-                    try:
-                        await thinking_msg.delete()
-                        self.debug_print(f"Deleted 'Thinking...' message")
-                    except Exception as e:
-                        self.debug_print(f"Error deleting 'Thinking...' message: {str(e)}")
+                    # Cancel typing indicator
+                    typing_task.cancel()
                 except Exception as e:
-                    # If there's an error, try to delete the "Thinking..." message
-                    try:
-                        await thinking_msg.delete()
-                    except:
-                        pass
+                    # Make sure to cancel typing indicator on error
+                    typing_task.cancel()
                     raise
                 
             except Exception as e:
