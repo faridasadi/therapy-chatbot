@@ -9,6 +9,7 @@ from telegram.ext import (
     filters
 )
 from telegram.error import TelegramError
+from app import db
 from config import (
     TELEGRAM_TOKEN,
     WELCOME_MESSAGE,
