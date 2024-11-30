@@ -1,12 +1,14 @@
-from telegram import Update
+from telegram import Update, LabeledPrice
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    PreCheckoutQueryHandler,
     ContextTypes,
     filters
 )
+from telegram.error import TelegramError
 from config import (
     TELEGRAM_TOKEN,
     WELCOME_MESSAGE,
@@ -20,7 +22,7 @@ from database import (
     check_subscription_status
 )
 from ai_service import get_therapy_response
-from subscription import create_subscription
+from subscription import create_subscription, generate_payment_invoice
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -58,10 +60,21 @@ class BotApplication:
 
     @staticmethod
     async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(
-            "To subscribe for unlimited access ($15/month), please visit: "
-            "[Payment Link] (implementation needed)"
-        )
+        """Handle subscription command and track analytics."""
+        try:
+            user_id = update.effective_user.id
+            user = get_or_create_user(user_id)
+            
+            # Increment subscription prompt views
+            user.subscription_prompt_views += 1
+            db.session.commit()
+            
+            await update.message.reply_text(SUBSCRIPTION_PROMPT)
+        except Exception as e:
+            print(f"Error in subscribe command: {e}")
+            await update.message.reply_text(
+                "An unexpected error occurred. Please try again later."
+            )
 
     @staticmethod
     async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,6 +105,9 @@ class BotApplication:
         can_respond, remaining = increment_message_count(user_id)
         
         if not can_respond:
+            user = get_or_create_user(user_id)
+            user.subscription_prompt_views += 1
+            db.session.commit()
             await update.message.reply_text(SUBSCRIPTION_PROMPT)
             return
         

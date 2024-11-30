@@ -8,11 +8,14 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Telegram configuration
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_PAYMENT_PROVIDER_TOKEN = os.environ.get("TELEGRAM_PAYMENT_TOKEN", "")
 
 # Subscription settings
 FREE_MESSAGE_LIMIT = 20
 SUBSCRIPTION_PRICE = 15.00
 WEEKLY_FREE_MESSAGES = 20
+SUBSCRIPTION_DESCRIPTION = "Monthly subscription to Therapyyy Bot - Unlimited access to AI therapy support"
+PAYMENT_CURRENCY = "USD"
 
 # Response templates
 WELCOME_MESSAGE = """Welcome to Therapyyy! 🌟 
@@ -20,12 +23,7 @@ I'm here to provide support and a listening ear. You can start chatting right aw
 
 Use /help to learn more about how I can assist you."""
 
-SUBSCRIPTION_PROMPT = """You've reached your free message limit. 
-To continue our conversations, you can:
-1. Subscribe for $15/month for unlimited access
-2. Wait for your weekly 20 free messages
-
-To subscribe, use /subscribe"""
+SUBSCRIPTION_PROMPT = "To upgrade and have more messages, message to @faridasadi"
 
 HELP_MESSAGE = """Here's how I can help you:
 - Chat with me about anything that's on your mind

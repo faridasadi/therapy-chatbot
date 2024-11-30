@@ -11,6 +11,7 @@ class User(db.Model):
     messages_count = db.Column(db.Integer, default=0)
     weekly_messages_count = db.Column(db.Integer, default=0)
     last_message_reset = db.Column(db.DateTime, default=datetime.utcnow)
+    subscription_prompt_views = db.Column(db.Integer, default=0)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
