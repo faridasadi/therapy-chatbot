@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import SignUpModal from "./components/SignUpModal";
+import SubscriptionModal from "./components/SubscriptionModal";
 
 interface Message {
   id: string;
@@ -169,7 +170,11 @@ export default function Home() {
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-white rounded-lg p-4">
-              <div className="animate-pulse">Thinking...</div>
+              <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
             </div>
           </div>
         )}
@@ -204,6 +209,10 @@ export default function Home() {
       <SignUpModal 
         isOpen={showSignUpModal} 
         onClose={() => setShowSignUpModal(false)} 
+      />
+      <SubscriptionModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
       />
     </div>
   );
