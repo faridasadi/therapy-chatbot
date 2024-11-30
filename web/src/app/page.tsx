@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import SignUpModal from "./components/SignUpModal";
 
 interface Message {
   id: string;
@@ -9,15 +10,33 @@ interface Message {
   role: "user" | "assistant";
 }
 
+const MAX_GUEST_MESSAGES = 5;
+
 export default function Home() {
   const { data: session } = useSession();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showSignUpModal, setShowSignUpModal] = useState(false);
+  const [guestMessageCount, setGuestMessageCount] = useState(0);
+
+  // Load guest message count from localStorage on mount
+  useEffect(() => {
+    const count = localStorage.getItem("guestMessageCount");
+    if (count) {
+      setGuestMessageCount(parseInt(count));
+    }
+  }, []);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
+
+    // Check if user has reached guest message limit
+    if (!session && guestMessageCount >= MAX_GUEST_MESSAGES) {
+      setShowSignUpModal(true);
+      return;
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -29,8 +48,27 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
+    if (!session) {
+      const newCount = guestMessageCount + 1;
+      setGuestMessageCount(newCount);
+      localStorage.setItem("guestMessageCount", newCount.toString());
+      
+      if (newCount >= MAX_GUEST_MESSAGES) {
+        setShowSignUpModal(true);
+      }
+    }
+
     // TODO: Implement API call for chat response
-    setIsLoading(false);
+    // Simulate API response for now
+    setTimeout(() => {
+      const botResponse: Message = {
+        id: Date.now().toString(),
+        content: "This is a simulated response. Please sign up to chat with the AI.",
+        role: "assistant",
+      };
+      setMessages((prev) => [...prev, botResponse]);
+      setIsLoading(false);
+    }, 1000);
   };
 
   return (
@@ -80,6 +118,10 @@ export default function Home() {
           </button>
         </div>
       </form>
+      <SignUpModal 
+        isOpen={showSignUpModal} 
+        onClose={() => setShowSignUpModal(false)} 
+      />
     </div>
   );
 }
