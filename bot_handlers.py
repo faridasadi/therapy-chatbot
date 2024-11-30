@@ -11,6 +11,7 @@ from telegram.ext import (
 from telegram.error import TelegramError
 from datetime import datetime
 from app import get_db_session
+from models import Message, User, Subscription
 from config import (
     TELEGRAM_TOKEN,
     WELCOME_MESSAGE,
@@ -247,8 +248,14 @@ class BotApplication:
                 
                 if not can_respond:
                     self.debug_print(f"User reached message limit")
-                    user.subscription_prompt_views += 1
-                    db.session.commit()
+                    db = get_db_session()
+                    try:
+                        user = db.query(User).get(user_id)
+                        if user:
+                            user.subscription_prompt_views += 1
+                            db.commit()
+                    finally:
+                        db.close()
                     await update.message.reply_text(SUBSCRIPTION_PROMPT)
                     return
             except Exception as e:
