@@ -5,7 +5,7 @@ const pool = new Pool({
 });
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   name: string | null;
   created_at: Date;
@@ -17,14 +17,14 @@ export interface User {
 }
 
 export interface Message {
-  id: number;
+  id: string;
   content: string;
   role: 'user' | 'assistant';
-  user_id: number | null;
+  user_id: string | null;
   created_at: Date;
 }
 
-export const db = {
+const db = {
   getUserByEmail: async (email: string): Promise<User | undefined> => {
     const result = await pool.query<User>(
       'SELECT * FROM users WHERE email = $1',
@@ -41,7 +41,7 @@ export const db = {
     return result.rows[0];
   },
 
-  getMessages: async (userId?: number): Promise<Message[]> => {
+  getMessages: async (userId?: string | null): Promise<Message[]> => {
     const query = userId 
       ? 'SELECT * FROM messages WHERE user_id = $1 ORDER BY created_at ASC'
       : 'SELECT * FROM messages WHERE user_id IS NULL ORDER BY created_at ASC LIMIT 50';
@@ -53,7 +53,7 @@ export const db = {
     return result.rows;
   },
 
-  createMessage: async (content: string, role: 'user' | 'assistant', userId?: number): Promise<Message> => {
+  createMessage: async (content: string, role: 'user' | 'assistant', userId?: string | null): Promise<Message> => {
     const result = await pool.query<Message>(
       'INSERT INTO messages (content, role, user_id) VALUES ($1, $2, $3) RETURNING *',
       [content, role, userId]
@@ -61,14 +61,14 @@ export const db = {
     return result.rows[0];
   },
 
-  clearMessages: async (userId?: number): Promise<void> => {
+  clearMessages: async (userId?: string | null): Promise<void> => {
     const query = userId
       ? 'DELETE FROM messages WHERE user_id = $1'
       : 'DELETE FROM messages WHERE user_id IS NULL';
     await pool.query(query, userId ? [userId] : []);
   },
 
-  updateWeeklyMessageCount: async (userId: number): Promise<User> => {
+  updateWeeklyMessageCount: async (userId: string): Promise<User> => {
     const result = await pool.query<User>(
       `UPDATE users 
        SET weekly_message_count = CASE 
@@ -88,7 +88,7 @@ export const db = {
     return result.rows[0];
   },
 
-  checkMessageLimit: async (userId: number): Promise<boolean> => {
+  checkMessageLimit: async (userId: string): Promise<boolean> => {
     const result = await pool.query<User>(
       `SELECT weekly_message_count, weekly_reset_date, is_subscribed, subscription_ends 
        FROM users 

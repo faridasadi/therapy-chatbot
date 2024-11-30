@@ -4,6 +4,7 @@ import Providers from "./providers"
 
 const inter = Inter({ subsets: ["latin"] });
 
+// Remove 'use client' directive and keep metadata export
 export const metadata = {
   title: "Therapy Chatbot",
   description: "AI-powered therapy chat assistant",

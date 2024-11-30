@@ -6,7 +6,7 @@ import db from "@/lib/db";
 export async function DELETE() {
   try {
     const session = await getServerSession(authOptions);
-    const userId = session?.user ? parseInt(session.user.id) : undefined;
+    const userId = session?.user?.id || null;
     
     await db.clearMessages(userId);
     return NextResponse.json({ message: "Messages cleared successfully" });
@@ -22,7 +22,7 @@ export async function DELETE() {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    const userId = session?.user ? parseInt(session.user.id) : undefined;
+    const userId = session?.user?.id || null;
     const messages = await db.getMessages(userId);
     
     return NextResponse.json({ messages });
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const userId = session?.user ? parseInt(session.user.id) : undefined;
+    const userId = session?.user?.id || null;
 
     // Check message limit for authenticated users
     if (userId) {
