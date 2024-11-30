@@ -383,18 +383,17 @@ wheels = [
 
 [[package]]
 name = "httpx"
-version = "0.25.2"
+version = "0.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "certifi" },
     { name = "httpcore" },
     { name = "idna" },
-    { name = "sniffio" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8c/23/911d93a022979d3ea295f659fbe7edb07b3f4561a477e83b3a6d0e0c914e/httpx-0.25.2.tar.gz", hash = "sha256:8b8fcaa0c8ea7b05edd69a094e63a2094c4efcb48129fb757361bc423c0ad9e8", size = 123889 }
+sdist = { url = "https://files.pythonhosted.org/packages/10/df/676b7cf674dd1bdc71a64ad393c89879f75e4a0ab8395165b498262ae106/httpx-0.28.0.tar.gz", hash = "sha256:0858d3bab51ba7e386637f22a61d8ccddaeec5f3fe4209da3a6168dbb91573e0", size = 141307 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/65/6940eeb21dcb2953778a6895281c179efd9100463ff08cb6232bb6480da7/httpx-0.25.2-py3-none-any.whl", hash = "sha256:a05d3d052d9b2dfce0e3896636467f8a5342fb2b902c819428e1ac65413ca118", size = 74980 },
+    { url = "https://files.pythonhosted.org/packages/8f/fb/a19866137577ba60c6d8b69498dc36be479b13ba454f691348ddf428f185/httpx-0.28.0-py3-none-any.whl", hash = "sha256:dc0b419a0cfeb6e8b34e85167c0da2671206f5095f1baa9663d23bcfd6b535fc", size = 73551 },
 ]
 
 [[package]]
@@ -917,15 +916,6 @@ wheels = [
 ]
 
 [[package]]
-name = "python-dotenv"
-version = "1.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/bc/57/e84d88dfe0aec03b7a2d4327012c1627ab5f03652216c63d49846d7a6c58/python-dotenv-1.0.1.tar.gz", hash = "sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca", size = 39115 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/3e/b68c118422ec867fa7ab88444e1274aa40681c606d59ac27de5a5588f082/python_dotenv-1.0.1-py3-none-any.whl", hash = "sha256:f7b63ef50f1b690dddf550d03497b66d609393b40b564ed0d674909a68ebf16a", size = 19863 },
-]
-
-[[package]]
 name = "python-multipart"
 version = "0.0.18"
 source = { registry = "https://pypi.org/simple" }
@@ -936,14 +926,14 @@ wheels = [
 
 [[package]]
 name = "python-telegram-bot"
-version = "20.7"
+version = "21.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/63/80a61afea467e669edd91ca46de6800814227021e8ea040b87995979b52e/python-telegram-bot-20.7.tar.gz", hash = "sha256:4f146c39de5f5e0b3723c2abedaf78046ebd30a6a49d2281ee4b3af5eb116b68", size = 368874 }
+sdist = { url = "https://files.pythonhosted.org/packages/76/fc/1be42f26f817c563fea54b202e145f488177f835ab1ddcbb5c6cc56ec61e/python_telegram_bot-21.7.tar.gz", hash = "sha256:bc8537b77ae02531fc2ad440caafc023fd13f13cf19e592dfa1a9ff84988a012", size = 431129 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/69/285c31caff09a10ce932711a63835775ed7c503783bd808a837ce803f055/python_telegram_bot-20.7-py3-none-any.whl", hash = "sha256:462326c65671c8c39e76c8c96756ee918be6797d225f8db84d2ec0f883383b8c", size = 552646 },
+    { url = "https://files.pythonhosted.org/packages/c9/ac/6ae9b8e8d9c13fdb93a2b110c64abc7f86a17db8a30a2b334d84f6193d5b/python_telegram_bot-21.7-py3-none-any.whl", hash = "sha256:aff1d7245f1b0d4d12d41c9acff74e86d7100713c2204cd02ff17f8d80d18846", size = 654927 },
 ]
 
 [[package]]
@@ -972,11 +962,8 @@ dependencies = [
     { name = "pandas" },
     { name = "plotly" },
     { name = "psycopg2-binary" },
-    { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "python-telegram-bot" },
-    { name = "sqlalchemy" },
-    { name = "telegram" },
     { name = "uvicorn" },
 ]
 
@@ -994,11 +981,8 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "python-dotenv" },
     { name = "python-multipart", specifier = ">=0.0.18" },
-    { name = "python-telegram-bot", specifier = "==20.7" },
-    { name = "sqlalchemy" },
-    { name = "telegram" },
+    { name = "python-telegram-bot", specifier = ">=21.7" },
     { name = "uvicorn", specifier = ">=0.32.1" },
 ]
 
@@ -1068,12 +1052,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/1a/4c/9b5764bd22eec91c4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/96/00/2b325970b3060c7cecebab6d295afe763365822b1306a12eeab198f74323/starlette-0.41.3-py3-none-any.whl", hash = "sha256:44cedb2b7c77a9de33a8b74b2b90e9f50d11fcf25d8270ea525ad71a25374ff7", size = 73225 },
 ]
-
-[[package]]
-name = "telegram"
-version = "0.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9d/ca/8bdf2deb93b9f6971dabf2ddc827c2a98ce23e13582a15b37e9bc169f226/telegram-0.0.1.tar.gz", hash = "sha256:d405a0af4c868a8dbeae6d03e297e21c7ee6269e11e2ed3810e15544aba02591", size = 879 }
 
 [[package]]
 name = "tenacity"

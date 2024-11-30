@@ -79,22 +79,10 @@ async def send_telegram_message(bot: Bot, user_id: int, message: str) -> bool:
         return True
         
     except TelegramError as e:
-        error_id = error_logger.log_error(
-            error=e,
-            component='telegram_message',
-            severity='WARNING',
-            context={'user_id': user_id, 'action': 'send_message'}
-        )
-        logger.error(f"Telegram error sending message to user {user_id} (Error ID: {error_id})")
+        logger.error(f"Telegram error sending message to user {user_id}: {str(e)}")
         return False
     except Exception as e:
-        error_id = error_logger.log_error(
-            error=e,
-            component='telegram_message',
-            severity='ERROR',
-            context={'user_id': user_id, 'action': 'send_message'}
-        )
-        logger.error(f"Unexpected error sending message to user {user_id} (Error ID: {error_id})")
+        logger.error(f"Unexpected error sending message to user {user_id}: {str(e)}")
         return False
 
 async def notify_weekly_reset(bot: Bot):
@@ -253,28 +241,6 @@ async def run_re_engagement_system(bot: Bot):
             await asyncio.sleep(6 * 60 * 60)
             
         except Exception as e:
-            # Use centralized error handling
-            error_id = error_logger.log_error(
-                error=e,
-                component='re_engagement',
-                severity='ERROR',
-                context={
-                    'stage': 'main_loop',
-                    'last_action': 'run_re_engagement_system',
-                    'error_count': RATE_LIMIT.get('error_count', 0)
-                }
-            )
-            logger.error(f"Re-engagement system error (Error ID: {error_id})")
-            
-            # Implement exponential backoff
-            retry_delay = min(300 * (2 ** RATE_LIMIT.get('error_count', 0)), 3600)
-            RATE_LIMIT['error_count'] = RATE_LIMIT.get('error_count', 0) + 1
-            
-            logger.info(f"Waiting {retry_delay} seconds before retry (attempt {RATE_LIMIT['error_count']})")
-            await asyncio.sleep(retry_delay)
-            
-            # Reset error count after successful execution
-            if RATE_LIMIT['error_count'] >= 5:
-                logger.error("Too many consecutive errors, entering recovery mode")
-                RATE_LIMIT['error_count'] = 0
-                await asyncio.sleep(3600)  # Wait 1 hour before resuming
+            logger.error(f"Critical error in re-engagement system: {str(e)}")
+            logger.info("Waiting 5 minutes before retry")
+            await asyncio.sleep(300)  # Wait 5 minutes on error

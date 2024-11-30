@@ -1,4 +1,4 @@
-modules = ["python-3.11", "postgresql-16", "nodejs-20"]
+modules = ["python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
@@ -13,29 +13,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Next.js Dev Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Telegram Bot"
+args = "Therapy Bot"
 
 [[workflows.workflow]]
-name = "Next.js Dev Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd web && npm run dev"
-waitForPort = 3000
-
-[[workflows.workflow]]
-name = "Telegram Bot"
+name = "Therapy Bot"
 author = "agent"
 
 [workflows.workflow.metadata]
@@ -47,19 +28,11 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python main.py"
+waitForPort = 8000
 
 [deployment]
-deploymentTarget = "static"
-publicDir = "/"
-
-[[ports]]
-localPort = 3000
-externalPort = 3000
+run = ["sh", "-c", "python main.py"]
 
 [[ports]]
 localPort = 8000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
