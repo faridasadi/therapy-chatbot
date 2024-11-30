@@ -9,3 +9,5 @@
 2024-11-30 12:12:41,900 - re_engagement - INFO - Starting subscription reminder process
 2024-11-30 12:12:42,363 - re_engagement - INFO - Found 0 users eligible for subscription reminders
 2024-11-30 12:12:42,364 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-11-30 12:12:42,593 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-11-30 12:12:42,594 - re_engagement - INFO - Waiting 6 hours before next cycle
