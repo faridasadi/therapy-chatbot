@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -23,11 +24,14 @@ export default function SignIn() {
     try {
       const result = await signIn("credentials", {
         ...data,
-        redirect: false,
+        redirect: true,
+        callbackUrl: "/"
       });
 
       if (result?.error) {
         setError("Invalid credentials");
+      } else {
+        window.location.href = "/";
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
@@ -84,6 +88,13 @@ export default function SignIn() {
           >
             Sign in
           </button>
+
+          <div className="text-center text-sm">
+            Don't have an account?{" "}
+            <Link href="/auth/signup" className="text-blue-600 hover:text-blue-700">
+              Sign up
+            </Link>
+          </div>
         </form>
       </div>
     </div>

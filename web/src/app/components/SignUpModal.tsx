@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface SignUpModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface SignUpModalProps {
 }
 
 export default function SignUpModal({ isOpen, onClose }: SignUpModalProps) {
+  const router = useRouter();
   if (!isOpen) return null;
 
   return (
@@ -26,7 +27,7 @@ export default function SignUpModal({ isOpen, onClose }: SignUpModalProps) {
             Maybe Later
           </button>
           <button
-            onClick={() => signIn(undefined, { callbackUrl: "/" })}
+            onClick={() => router.push('/auth/signup')}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
           >
             Sign Up
