@@ -3,3 +3,9 @@
 2024-11-30 12:10:40,484 - re_engagement - INFO - Starting weekly reset notification process
 2024-11-30 12:10:40,973 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-11-30 12:10:40,973 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-11-30 12:11:41,204 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-11-30 12:11:41,669 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-11-30 12:11:41,670 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-11-30 12:12:41,900 - re_engagement - INFO - Starting subscription reminder process
+2024-11-30 12:12:42,363 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-11-30 12:12:42,364 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
