@@ -23,44 +23,7 @@ class BotApplication:
             timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
             print(f"[Debug {timestamp}] {message}")
 
-    @asynccontextmanager
-    async def show_typing_action(self, chat_id: int):
-        """Context manager to show and maintain typing action while processing."""
-        typing_task = None
-        
-        async def send_typing():
-            self.debug_print(f"Starting typing indicator for chat {chat_id}")
-            while True:
-                try:
-                    await self.bot.send_chat_action(chat_id=chat_id, action="typing")
-                    self.debug_print(f"Sent typing action to chat {chat_id}")
-                    await asyncio.sleep(3)  # Reduced from 4s to 3s as Telegram status lasts ~5s
-                except Exception as e:
-                    error_msg = f"Error in typing action for chat {chat_id}: {str(e)}"
-                    self.debug_print(error_msg)
-                    # Log the full error details
-                    print(f"[Typing Action Error] {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                    print(f"Chat ID: {chat_id}")
-                    print(f"Error Type: {type(e).__name__}")
-                    print(f"Error Details: {str(e)}")
-                    break
-        
-        try:
-            # Start typing indication
-            self.debug_print(f"Initializing typing action for chat {chat_id}")
-            typing_task = asyncio.create_task(send_typing())
-            yield
-        finally:
-            # Clean up typing task
-            if typing_task:
-                self.debug_print(f"Cleaning up typing action for chat {chat_id}")
-                typing_task.cancel()
-                try:
-                    await typing_task
-                except asyncio.CancelledError:
-                    self.debug_print(f"Typing action cancelled for chat {chat_id}")
-                except Exception as e:
-                    self.debug_print(f"Error cleaning up typing action for chat {chat_id}: {str(e)}")
+    
 
     async def initialize(self):
         self.debug_print("Starting bot initialization...")
@@ -286,8 +249,11 @@ class BotApplication:
             # Get AI response with theme analysis
             try:
                 self.debug_print(f"Requesting AI response with personalization")
-                # Start typing action
-                async with self.show_typing_action(update.effective_chat.id):
+                # Send "Thinking..." message
+                thinking_msg = await update.message.reply_text("Thinking...")
+                self.debug_print(f"Sent 'Thinking...' message")
+                
+                try:
                     response, theme, sentiment = get_therapy_response(message_text, user_id)
                     self.debug_print(f"Received AI response - Theme: {theme}, Sentiment: {sentiment}")
                     
@@ -304,6 +270,20 @@ class BotApplication:
                             db.commit()
                     finally:
                         db.close()
+                        
+                    # Delete the "Thinking..." message
+                    try:
+                        await thinking_msg.delete()
+                        self.debug_print(f"Deleted 'Thinking...' message")
+                    except Exception as e:
+                        self.debug_print(f"Error deleting 'Thinking...' message: {str(e)}")
+                except Exception as e:
+                    # If there's an error, try to delete the "Thinking..." message
+                    try:
+                        await thinking_msg.delete()
+                    except:
+                        pass
+                    raise
                 
             except Exception as e:
                 self.debug_print(f"Error getting AI response: {str(e)}")
