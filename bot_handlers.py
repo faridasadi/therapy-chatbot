@@ -182,17 +182,7 @@ class BotApplication:
             self.debug_print(f"Error in status command: {str(e)}")
             await update.message.reply_text("An error occurred. Please try again.")
 
-    async def send_typing_action(self, chat_id):
-        while True:
-            try:
-                await self.bot.send_chat_action(chat_id=chat_id, action="typing")
-                await asyncio.sleep(3)  # Reduce from 4 to 3 seconds
-            except asyncio.CancelledError:
-                self.debug_print(f"Typing action cancelled for chat {chat_id}")
-                break
-            except Exception as e:
-                self.debug_print(f"Error sending typing action: {str(e)}")
-                break
+    
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -261,33 +251,31 @@ class BotApplication:
             # Get AI response with theme analysis
             try:
                 self.debug_print(f"Requesting AI response with personalization")
-                # Start typing indicator
-                typing_task = None
+                # Send typing indicator
+                await context.bot.send_chat_action(
+                    chat_id=update.effective_chat.id,
+                    action="typing"
+                )
+                self.debug_print("Sent typing indicator")
+
+                # Get AI response
+                response, theme, sentiment = get_therapy_response(message_text, user_id)
+                self.debug_print("Got AI response")
+                
+                # Update message with theme and sentiment
                 try:
-                    typing_task = asyncio.create_task(self.send_typing_action(update.effective_chat.id))
-                    self.debug_print("Started typing indicator")
-                    
-                    response, theme, sentiment = get_therapy_response(message_text, user_id)
-                    self.debug_print("Got AI response, stopping typing indicator")
-                    
-                    # Update message with theme and sentiment
-                    try:
-                        db = get_db_session()
-                        latest_message = (db.query(Message)
-                            .filter(Message.user_id == user_id)
-                            .order_by(Message.timestamp.desc())
-                            .first())
-                        if latest_message:
-                            latest_message.theme = theme
-                            latest_message.sentiment_score = sentiment
-                            db.commit()
-                    finally:
-                        db.close()
+                    db = get_db_session()
+                    latest_message = (db.query(Message)
+                        .filter(Message.user_id == user_id)
+                        .order_by(Message.timestamp.desc())
+                        .first())
+                    if latest_message:
+                        latest_message.theme = theme
+                        latest_message.sentiment_score = sentiment
+                        db.commit()
                 finally:
-                    if typing_task:
-                        typing_task.cancel()
-                        await asyncio.sleep(0.1)  # Small delay to ensure cancellation
-                        self.debug_print("Typing indicator cancelled")
+                    db.close()
+                
                 
             except Exception as e:
                 self.debug_print(f"Error getting AI response: {str(e)}")
