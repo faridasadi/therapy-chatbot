@@ -19,9 +19,11 @@ PAYMENT_CURRENCY = "USD"
 
 # Response templates
 WELCOME_MESSAGE = """Welcome to Therapyyy! 🌟 
-I'm here to provide support and a listening ear. You can start chatting right away - you have 20 free messages to begin with.
+I'm your AI therapy companion, here to provide a supportive and understanding space for you. I'm trained to help you explore your thoughts and feelings in a safe, confidential environment.
 
-Use /help to learn more about how I can assist you."""
+You have 20 free messages to start your journey with me. I'll be here to listen, support, and guide you through whatever you'd like to discuss.
+
+Use /help to discover all the ways I can support you."""
 
 SUBSCRIPTION_PROMPT = "To upgrade and have more messages, message to @faridasadi"
 
