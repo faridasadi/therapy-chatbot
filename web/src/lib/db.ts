@@ -56,6 +56,13 @@ export const db = {
     );
     return result.rows[0];
   },
+
+  async clearMessages(userId?: number) {
+    const query = userId
+      ? 'DELETE FROM messages WHERE user_id = $1'
+      : 'DELETE FROM messages WHERE user_id IS NULL';
+    await pool.query(query, userId ? [userId] : []);
+  },
 };
 
 export default db;

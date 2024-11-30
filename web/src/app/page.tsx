@@ -47,6 +47,28 @@ export default function Home() {
     }
   }, []);
 
+  const resetChat = async () => {
+    try {
+      const response = await fetch("/api/chat", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to clear messages");
+      }
+
+      // Clear messages state
+      setMessages([]);
+      // Reset guest message count
+      setGuestMessageCount(0);
+      localStorage.removeItem("guestMessageCount");
+      // Reset signup modal
+      setShowSignUpModal(false);
+    } catch (error) {
+      console.error("Error resetting chat:", error);
+    }
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -147,6 +169,15 @@ export default function Home() {
         )}
       </div>
       <form onSubmit={sendMessage} className="border-t bg-white p-4">
+        <div className="flex justify-end mb-2">
+          <button
+            type="button"
+            onClick={resetChat}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Clear Chat
+          </button>
+        </div>
         <div className="flex space-x-4">
           <input
             type="text"

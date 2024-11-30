@@ -3,6 +3,22 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import db from "@/lib/db";
 
+export async function DELETE() {
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user ? parseInt(session.user.id) : undefined;
+    
+    await db.clearMessages(userId);
+    return NextResponse.json({ message: "Messages cleared successfully" });
+  } catch (error) {
+    console.error("Error clearing messages:", error);
+    return NextResponse.json(
+      { error: "Failed to clear messages" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
