@@ -48,12 +48,18 @@ class BotApplication:
     
     @staticmethod
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = get_or_create_user(
-            update.effective_user.id,
-            update.effective_user.username,
-            update.effective_user.first_name
-        )
-        await update.message.reply_text(WELCOME_MESSAGE)
+        try:
+            print(f"Start command received from user {update.effective_user.id}")
+            user = get_or_create_user(
+                update.effective_user.id,
+                update.effective_user.username,
+                update.effective_user.first_name
+            )
+            await update.message.reply_text(WELCOME_MESSAGE)
+            print(f"Start command completed for user {update.effective_user.id}")
+        except Exception as e:
+            print(f"Error in start command: {e}")
+            await update.message.reply_text("An error occurred. Please try again.")
 
     @staticmethod
     async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,9 +136,12 @@ class BotApplication:
 
     @staticmethod
     async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        print(f"Error occurred: {context.error}")
-        if update:
-            await update.message.reply_text(
+        error_msg = f"Error occurred: {context.error}"
+        print(f"ERROR: {error_msg}")
+        print(f"Update: {update}")
+        print(f"Error context: {context}")
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
                 "I apologize, but I encountered an error. Please try again later."
             )
 
