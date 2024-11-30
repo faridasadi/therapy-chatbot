@@ -1,31 +1,13 @@
-from telegram import Update, Bot
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    PreCheckoutQueryHandler,
-    ContextTypes,
-    filters
-)
-from telegram.error import TelegramError
+import os
 from datetime import datetime
-from app import get_db_session
-from models import Message, User, Subscription
-from config import (
-    TELEGRAM_TOKEN,
-    WELCOME_MESSAGE,
-    SUBSCRIPTION_PROMPT,
-    HELP_MESSAGE
-)
-from database import (
-    get_or_create_user,
-    save_message,
-    increment_message_count,
-    check_subscription_status
-)
+from telegram import Update
+from telegram.error import TelegramError
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from config import TELEGRAM_TOKEN, WELCOME_MESSAGE, HELP_MESSAGE, SUBSCRIPTION_PROMPT
+from models import Message, User
 from ai_service import get_therapy_response
-from subscription import create_subscription, generate_payment_invoice
+from database import get_db_session, get_or_create_user
+from database import check_subscription_status, increment_message_count, save_message
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -40,6 +22,45 @@ class BotApplication:
         if self.debug_mode:
             timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
             print(f"[Debug {timestamp}] {message}")
+
+    @asynccontextmanager
+    async def show_typing_action(self, chat_id: int):
+        """Context manager to show and maintain typing action while processing."""
+        typing_task = None
+        
+        async def send_typing():
+            self.debug_print(f"Starting typing indicator for chat {chat_id}")
+            while True:
+                try:
+                    await self.bot.send_chat_action(chat_id=chat_id, action="typing")
+                    self.debug_print(f"Sent typing action to chat {chat_id}")
+                    await asyncio.sleep(3)  # Reduced from 4s to 3s as Telegram status lasts ~5s
+                except Exception as e:
+                    error_msg = f"Error in typing action for chat {chat_id}: {str(e)}"
+                    self.debug_print(error_msg)
+                    # Log the full error details
+                    print(f"[Typing Action Error] {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    print(f"Chat ID: {chat_id}")
+                    print(f"Error Type: {type(e).__name__}")
+                    print(f"Error Details: {str(e)}")
+                    break
+        
+        try:
+            # Start typing indication
+            self.debug_print(f"Initializing typing action for chat {chat_id}")
+            typing_task = asyncio.create_task(send_typing())
+            yield
+        finally:
+            # Clean up typing task
+            if typing_task:
+                self.debug_print(f"Cleaning up typing action for chat {chat_id}")
+                typing_task.cancel()
+                try:
+                    await typing_task
+                except asyncio.CancelledError:
+                    self.debug_print(f"Typing action cancelled for chat {chat_id}")
+                except Exception as e:
+                    self.debug_print(f"Error cleaning up typing action for chat {chat_id}: {str(e)}")
 
     async def initialize(self):
         self.debug_print("Starting bot initialization...")
@@ -265,22 +286,24 @@ class BotApplication:
             # Get AI response with theme analysis
             try:
                 self.debug_print(f"Requesting AI response with personalization")
-                response, theme, sentiment = get_therapy_response(message_text, user_id)
-                self.debug_print(f"Received AI response - Theme: {theme}, Sentiment: {sentiment}")
-                
-                # Update message with theme and sentiment
-                try:
-                    db = get_db_session()
-                    latest_message = (db.query(Message)
-                        .filter(Message.user_id == user_id)
-                        .order_by(Message.timestamp.desc())
-                        .first())
-                    if latest_message:
-                        latest_message.theme = theme
-                        latest_message.sentiment_score = sentiment
-                        db.commit()
-                finally:
-                    db.close()
+                # Start typing action
+                async with self.show_typing_action(update.effective_chat.id):
+                    response, theme, sentiment = get_therapy_response(message_text, user_id)
+                    self.debug_print(f"Received AI response - Theme: {theme}, Sentiment: {sentiment}")
+                    
+                    # Update message with theme and sentiment
+                    try:
+                        db = get_db_session()
+                        latest_message = (db.query(Message)
+                            .filter(Message.user_id == user_id)
+                            .order_by(Message.timestamp.desc())
+                            .first())
+                        if latest_message:
+                            latest_message.theme = theme
+                            latest_message.sentiment_score = sentiment
+                            db.commit()
+                    finally:
+                        db.close()
                 
             except Exception as e:
                 self.debug_print(f"Error getting AI response: {str(e)}")
