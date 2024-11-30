@@ -1,0 +1,5 @@
+2024-11-30 12:10:40,482 - re_engagement - INFO - Starting re-engagement system
+2024-11-30 12:10:40,483 - re_engagement - INFO - Beginning re-engagement cycle
+2024-11-30 12:10:40,484 - re_engagement - INFO - Starting weekly reset notification process
+2024-11-30 12:10:40,973 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-11-30 12:10:40,973 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0

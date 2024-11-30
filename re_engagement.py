@@ -12,11 +12,38 @@ import logging
 from time import time
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+import os
+from logging.handlers import RotatingFileHandler
+
+# Ensure logs directory exists
+os.makedirs('static/logs', exist_ok=True)
+
+# Configure logging with both file and console handlers
 logger = logging.getLogger('re_engagement')
+logger.setLevel(logging.INFO)
+
+# Console handler with detailed formatting
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_format = logging.Formatter(
+    '\033[92m%(asctime)s\033[0m - \033[94m%(name)s\033[0m - \033[93m%(levelname)s\033[0m - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+console_handler.setFormatter(console_format)
+
+# File handler with rotation
+file_handler = RotatingFileHandler(
+    'static/logs/re_engagement.log',
+    maxBytes=1024*1024,  # 1MB
+    backupCount=5
+)
+file_handler.setLevel(logging.INFO)
+file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_format)
+
+# Add handlers to logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # Rate limiting configuration
 RATE_LIMIT = {
