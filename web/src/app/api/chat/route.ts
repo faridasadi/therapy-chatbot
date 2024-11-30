@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateResponse } from "@/lib/openai";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import db from "@/lib/db";
@@ -65,10 +66,10 @@ export async function POST(request: Request) {
       userId
     );
 
-    // TODO: Integrate with actual AI service
-    // For now, return a simple response
+    // Generate AI response
+    const aiResponse = await generateResponse(content);
     const botResponse = await db.createMessage(
-      "Thank you for your message. I am here to help.",
+      aiResponse,
       "assistant",
       userId
     );
