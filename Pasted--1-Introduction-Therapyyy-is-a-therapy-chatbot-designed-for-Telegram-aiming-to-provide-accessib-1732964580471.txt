@@ -1,0 +1,95 @@
+## 1. Introduction
+
+Therapyyy is a therapy chatbot designed for Telegram, aiming to provide accessible mental health support directly within a familiar messaging platform. By leveraging Telegram's user identification system, the bot eliminates the need for user registration, streamlining the user experience. The focus is on delivering immediate value and encouraging users to subscribe for extended access.
+
+## 2. Objectives
+
+- **Accessibility**: Deliver immediate mental health support through Telegram.
+- **Streamlined Experience**: Remove barriers by eliminating the need for user registration.
+- **User Engagement**: Leverage Telegram's native functionalities for interaction.
+- **Monetization**: Implement a straightforward subscription model within Telegram.
+
+## 3. User Flow
+
+1. **Initial Interaction**: Users start a conversation by clicking "Start" in the bot chat.
+2. **Guest Chat**: Users can send up to **20 free messages** without any sign-up.
+3. **Subscription Prompt**: After 20 messages, the bot informs the user that a subscription is needed to continue.
+4. **Subscription Process**:
+    - **Option 1**: Users are prompted to subscribe for **$15/month** for unlimited access.
+    - **Option 2**: Optionally, users receive **20 free messages per week** without subscribing.
+5. **Payment Completion**: Users complete the payment using Telegram's payment system or an external link.
+6. **Continued Engagement**: Subscribers enjoy unlimited messaging and personalized interactions based on stored data.
+7. **Re-Engagement**: Non-subscribers receive a weekly message quota reset or occasional prompts to subscribe.
+
+## 4. Features
+
+### 4.1 Chat Interface
+
+- **Telegram Integration**: Seamless interaction within Telegram's chat environment.
+- **Immediate Access**: Users can start chatting instantly.
+- **Quick Replies**: Utilize Telegram's buttons for common commands or responses.
+- **Conversation History**: Users can scroll through past messages within the chat.
+
+### 4.2 AI Integration
+
+- **OpenAI GPT-4o mini API**: Use GPT-4 for advanced, human-like conversations.
+- **Basic RAG Implementation**: Collect key themes from user messages to personalize responses.
+
+### 4.3 User Data Management
+
+- **User Identification**: Use Telegram's unique user IDs for tracking.
+- **Data Storage**: Securely store minimal data (conversation history, themes) linked to user IDs.
+- **Personalization**: Enhance future interactions using stored conversation data.
+
+### 4.4 Authentication and Security
+
+- **User Privacy**: Respect user anonymity; no personal data beyond Telegram ID is required.
+- **Data Security**: Encrypt data in transit and at rest; follow best practices for data protection.
+
+### 4.5 Monetization
+
+- **Subscription Model**: Offer a **$15/month** subscription for unlimited access.
+- **Payment Integration**: Use external link to a payment system.
+
+## 5. Technology Stack
+
+- **Platform**: Telegram Bot API
+- **Backend**: Python (Flask or FastAPI) or Node.js or TypeScript
+- **Database**: MongoDB or PostgreSQL
+- **AI Services**: OpenAI GPT-4o mini API
+- **Payment Processing**: Telegram Payments API or external payment gateways
+
+## 6. Activation Strategies
+
+- **Zero Barrier Entry**: Users can interact immediately without any registration hurdles.
+- **Immediate Value Delivery**: Provide meaningful, empathetic responses from the first message.
+- **Strategic Free Messaging**: Allow initial free interactions to demonstrate the bot's usefulness.
+- **Compelling Upgrade Prompt**: After free messages are used, clearly communicate the benefits of subscribing.
+
+## 7. Retention Strategies
+
+- **Weekly Free Messages**: Offer a limited number of free messages each week to encourage regular use.
+- **Personalization**: Use previous conversation data to make interactions more relevant.
+- **Re-Engagement Notifications**: Send optional messages when free message quotas reset.
+- **Content Updates**: Share new features or helpful tips to maintain user interest.
+
+## 8. Monetization Strategies
+
+- **Seamless Payments**: Simplify the subscription process within Telegram.
+- **Transparent Pricing**: Clearly display the cost and benefits of subscribing.
+- **Limited-Time Offers**: Provide occasional discounts to incentivize hesitant users.
+- **Upselling**: Highlight additional benefits exclusive to subscribers, like priority responses.
+
+## 9. Additional Considerations
+
+### 9.1 User Support
+
+- **Help Command**: Implement `/help` for assistance.
+- **Feedback Mechanism**: Allow users to rate interactions or submit feedback.
+- **Support Contact**: Provide contact information for user inquiries.
+
+### 9.2 Scalability
+
+- **Optimized Backend**: Ensure the infrastructure can handle user growth.
+- **Performance Monitoring**: Regularly monitor and optimize response times.
+- **Load Balancing**: Use cloud resources to manage high traffic.
