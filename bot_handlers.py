@@ -144,16 +144,33 @@ class BotApplication:
         try:
             print(f"[Message Handler] Processing message from user {user_id}")
             print(f"[Message Handler] Message content: {message_text[:50]}...")
+            print(f"[Message Handler] Database state: Attempting to verify connection...")
             
             try:
-                # Echo the message back immediately to confirm receipt
+                # Test database connection by attempting to get user
+                user = get_or_create_user(user_id)
+                print(f"[Message Handler] Database connection verified - User found/created with ID {user_id}")
+            except Exception as e:
+                print(f"[Message Handler] Database connection test failed: {str(e)}")
+                raise
+            
+            try:
+                # First echo back the exact message to test message sending
                 await update.message.reply_text(
-                    "Message received! Let me think about that...",
+                    f"Echo test - I received: {message_text}",
                     quote=True
                 )
-                print(f"[Message Handler] Sent acknowledgment to user {user_id}")
+                print(f"[Message Handler] Echo test successful for user {user_id}")
+                
+                # Then send the processing acknowledgment
+                await update.message.reply_text(
+                    "Now processing your message with AI...",
+                    quote=True
+                )
+                print(f"[Message Handler] Sent processing acknowledgment to user {user_id}")
             except TelegramError as e:
-                print(f"[Message Handler] Failed to send acknowledgment: {str(e)}")
+                print(f"[Message Handler] Failed to send echo/acknowledgment: {str(e)}")
+                print(f"[Message Handler] Error details: {e.__dict__}")
             
             try:
                 # Save incoming message

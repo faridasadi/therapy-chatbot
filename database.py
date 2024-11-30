@@ -17,18 +17,31 @@ def get_or_create_user(telegram_id: int, username: str = None, first_name: str =
     return user
 
 def save_message(user_id: int, content: str, is_from_user: bool) -> Message:
-    message = Message(
-        user_id=user_id,
-        content=content,
-        is_from_user=is_from_user
-    )
-    db.session.add(message)
-    db.session.commit()
-    return message
+    print(f"[Database] Attempting to save message for user {user_id}")
+    try:
+        message = Message(
+            user_id=user_id,
+            content=content,
+            is_from_user=is_from_user
+        )
+        print(f"[Database] Message object created, length: {len(content)} chars")
+        
+        db.session.add(message)
+        print(f"[Database] Message added to session")
+        
+        db.session.commit()
+        print(f"[Database] Message successfully saved with ID: {message.id}")
+        return message
+    except Exception as e:
+        print(f"[Database] Error saving message: {str(e)}")
+        db.session.rollback()
+        raise
 
 def increment_message_count(user_id: int) -> tuple[bool, int]:
+    print(f"[Database] Checking message count for user {user_id}")
     user = User.query.get(user_id)
     if not user:
+        print(f"[Database] User {user_id} not found")
         return False, 0
         
     # Reset weekly messages if needed
