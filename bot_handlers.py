@@ -55,12 +55,20 @@ class BotApplication:
             return
 
         user_id = update.effective_user.id
-        async with db_session() as db:
-            try:
-                user = get_or_create_user(user_id, update.effective_user.username, update.effective_user.first_name)
-                user_record = db.query(User).get(user_id)
+        try:
+            async with db_session() as db:
+                user = db.query(User).get(user_id)
+                if not user:
+                    user = User(
+                        id=user_id,
+                        username=update.effective_user.username,
+                        first_name=update.effective_user.first_name,
+                        joined_at=datetime.utcnow()
+                    )
+                    db.add(user)
+                    db.commit()
                 
-                if not user_record.background_completed:
+                if not user.background_completed:
                     welcome_text = (
                         f"{WELCOME_MESSAGE}\n\n"
                         "To provide you with the best possible support, I'd like to learn a bit about you. "
@@ -75,9 +83,10 @@ class BotApplication:
                     )
                 
                 await update.message.reply_text(welcome_text)
-            except Exception as e:
-                print(f"[Error] Start command failed: {str(e)}")
-                await update.message.reply_text("An error occurred. Please try again.")
+                
+        except Exception as e:
+            print(f"[Error] Start command failed: {str(e)}")
+            await update.message.reply_text("I apologize, but I encountered a temporary issue. Please try /start again.")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
