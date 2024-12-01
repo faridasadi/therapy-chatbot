@@ -189,3 +189,21 @@ WHERE "user".last_message_reset <= %(last_message_reset_1)s AND "user".is_subscr
 2024-12-01 13:51:06,316 - re_engagement - INFO - Starting weekly reset notification process
 2024-12-01 13:51:06,819 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-12-01 13:51:06,819 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-01 13:52:07,058 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-12-01 13:52:07,560 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-12-01 13:52:07,560 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-12-01 13:53:07,798 - re_engagement - INFO - Starting subscription reminder process
+2024-12-01 13:53:08,281 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-12-01 13:53:08,282 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-12-01 13:53:08,520 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-12-01 13:53:08,520 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-01 13:53:53,005 - re_engagement - INFO - Starting re-engagement system
+2024-12-01 13:53:53,006 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-01 13:53:53,006 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-01 13:53:57,010 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-01 13:53:57,010 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-01 13:54:10,216 - re_engagement - INFO - Starting re-engagement system
+2024-12-01 13:54:10,216 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-01 13:54:10,216 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-01 13:54:14,229 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-01 13:54:14,229 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0

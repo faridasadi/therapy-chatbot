@@ -9,30 +9,6 @@ async def run_api():
     server = uvicorn.Server(config)
     await server.serve()
 
-async def run_bot():
-    try:
-        print("[Bot] Starting Therapyyy bot initialization...")
-        bot_app = create_bot_application()
-        print("[Bot] Bot application instance created")
-        
-        print("[Bot] Bot application and handlers initialized")
-        
-        print("[Bot] Starting bot polling...")
-        await bot_app.start()
-        
-    except Exception as e:
-        print(f"[Bot] CRITICAL ERROR:")
-        print(f"[Bot] Error type: {type(e).__name__}")
-        print(f"[Bot] Error details: {str(e)}")
-        if 'bot_app' in locals():
-            print("[Bot] Attempting graceful shutdown...")
-            try:
-                await bot_app.stop()
-                print("[Bot] Bot stopped successfully")
-            except Exception as stop_error:
-                print(f"[Bot] Error during shutdown: {str(stop_error)}")
-        raise
-
 async def shutdown(signal, loop):
     print(f"Received exit signal {signal.name}...")
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -54,6 +30,7 @@ async def main():
         # Initialize components
         print("Initializing Telegram bot...")
         bot_app = create_bot_application()
+        await bot_app.application.initialize()
         
         # Start FastAPI in the background
         api_task = asyncio.create_task(run_api())
@@ -61,9 +38,9 @@ async def main():
         # Import re-engagement system
         from re_engagement import run_re_engagement_system
         
+        # Start Telegram bot polling
         print("Starting Telegram bot...")
-        await bot_app.application.initialize()
-        await bot_app.application.updater.start_polling()
+        polling_task = asyncio.create_task(bot_app.application.updater.start_polling())
         
         print("Starting re-engagement system...")
         re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
@@ -83,8 +60,6 @@ async def main():
         [task.cancel() for task in tasks]
         print("Waiting for tasks to complete...")
         await asyncio.gather(*tasks, return_exceptions=True)
-        loop.stop()
-        loop.close()
         print("Cleanup completed")
 
 if __name__ == "__main__":
