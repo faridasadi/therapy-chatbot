@@ -33,11 +33,26 @@ async def main():
         print("Initializing Telegram bot...")
         bot_app = create_bot_application()
         
-        # Initialize the application first
-        await bot_app.application.initialize()
-        
-        # Start polling in non-blocking mode
-        await bot_app.application.start()
+        # Initialize the application with retry logic
+        retry_count = 3
+        while retry_count > 0:
+            try:
+                print(f"Attempting to initialize bot (attempts remaining: {retry_count})")
+                await asyncio.wait_for(bot_app.application.initialize(), timeout=30.0)
+                await bot_app.application.start()
+                print("Bot successfully initialized and started")
+                break
+            except asyncio.TimeoutError:
+                retry_count -= 1
+                if retry_count > 0:
+                    print("Initialization timed out, retrying...")
+                    await asyncio.sleep(5)
+                else:
+                    print("Failed to initialize bot after multiple attempts")
+                    raise
+            except Exception as e:
+                print(f"Error initializing bot: {str(e)}")
+                raise
         
         # Create other tasks
         tasks = [

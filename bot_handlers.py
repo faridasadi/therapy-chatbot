@@ -34,6 +34,14 @@ class BotApplication:
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         self.application.add_error_handler(self.error_handler)
 
+    async def _keep_typing(self, chat_id: int, bot):
+        try:
+            while True:
+                await bot.send_chat_action(chat_id=chat_id, action="typing")
+                await asyncio.sleep(5)  # Telegram requires refresh every 5 seconds
+        except asyncio.CancelledError:
+            pass
+
     async def get_status_message(self, user_id: int) -> str:
         """Generate status message based on user subscription status"""
         if check_subscription_status(user_id):
@@ -192,8 +200,6 @@ class BotApplication:
         message_text = update.message.text
 
         try:
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-
             # Handle background collection if needed
             user = get_or_create_user(user_id)
             if not user.background_completed and not context.user_data.get('collecting_background', False):
@@ -221,21 +227,22 @@ class BotApplication:
                 await update.message.reply_text(SUBSCRIPTION_PROMPT)
                 return
 
-            # Get and send AI response
-            response, theme, sentiment = get_therapy_response(message_text, user_id)
-            
-            # Update message theme and sentiment
-            async with db_session() as db:
-                latest_message = db.query(Message).filter(
-                    Message.user_id == user_id
-                ).order_by(Message.timestamp.desc()).first()
-                if latest_message:
-                    latest_message.theme = theme
-                    latest_message.sentiment_score = sentiment
-                    db.commit()
+            # Get and send AI response with typing indicator
+            async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
+                response, theme, sentiment = get_therapy_response(message_text, user_id)
+                
+                # Update message theme and sentiment
+                async with db_session() as db:
+                    latest_message = db.query(Message).filter(
+                        Message.user_id == user_id
+                    ).order_by(Message.timestamp.desc()).first()
+                    if latest_message:
+                        latest_message.theme = theme
+                        latest_message.sentiment_score = sentiment
+                        db.commit()
 
-            save_message(user_id, response, False)
-            await update.message.reply_text(response)
+                save_message(user_id, response, False)
+                await update.message.reply_text(response)
 
             # Notify about remaining messages
             if 0 < remaining <= 2:
