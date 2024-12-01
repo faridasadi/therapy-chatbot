@@ -128,3 +128,33 @@
 2024-11-30 23:21:11,029 - re_engagement - INFO - Starting weekly reset notification process
 2024-11-30 23:21:11,516 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-11-30 23:21:11,516 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-11-30 23:22:11,747 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-11-30 23:22:12,211 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-11-30 23:22:12,211 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-11-30 23:23:12,441 - re_engagement - INFO - Starting subscription reminder process
+2024-11-30 23:23:12,900 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-11-30 23:23:12,900 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-11-30 23:23:13,129 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-11-30 23:23:13,129 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-01 05:23:13,129 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-01 05:23:13,140 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-01 05:23:13,194 - re_engagement - ERROR - Error in notify_weekly_reset: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT "user".id AS user_id, "user".username AS user_username, "user".first_name AS user_first_name, "user".joined_at AS user_joined_at, "user".is_subscribed AS user_is_subscribed, "user".subscription_end AS user_subscription_end, "user".messages_count AS user_messages_count, "user".weekly_messages_count AS user_weekly_messages_count, "user".last_message_reset AS user_last_message_reset, "user".subscription_prompt_views AS user_subscription_prompt_views, "user".interaction_style AS user_interaction_style 
+FROM "user" 
+WHERE "user".last_message_reset <= %(last_message_reset_1)s AND "user".is_subscribed = false]
+[parameters: {'last_message_reset_1': datetime.datetime(2024, 11, 24, 5, 23, 13, 140617)}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2024-12-01 05:24:13,195 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-12-01 05:24:15,721 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-12-01 05:24:15,721 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-12-01 05:25:15,954 - re_engagement - INFO - Starting subscription reminder process
+2024-12-01 05:25:16,422 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-12-01 05:25:16,422 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-12-01 05:25:16,654 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-12-01 05:25:16,654 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-01 07:26:06,188 - re_engagement - INFO - Starting re-engagement system
+2024-12-01 07:26:06,188 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-01 07:26:06,189 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-01 07:26:06,679 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-01 07:26:06,679 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
