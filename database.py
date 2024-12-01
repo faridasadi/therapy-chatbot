@@ -50,14 +50,16 @@ def get_or_create_user(user_id: int, username: Optional[str] = None, first_name:
             db.commit()
         return user
 
-def save_message(user_id: int, content: str, is_from_user: bool) -> Message:
+def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> Message:
     print(f"[Database] Attempting to save message for user {user_id}")
     with get_db_session() as db:
         try:
             message = Message(
                 user_id=user_id,
                 content=content,
-                is_from_user=is_from_user
+                is_from_user=is_from_user,
+                theme=theme,
+                sentiment_score=sentiment_score
             )
             print(f"[Database] Message object created, length: {len(content)} chars")
 
