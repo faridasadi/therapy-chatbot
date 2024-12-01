@@ -94,3 +94,52 @@ def check_subscription_status(user_id: int) -> bool:
         return True
     finally:
         db.close()
+
+
+def clean_user_data(user_id: int) -> bool:
+    """Clean up all user data and reset background information.
+    
+    Args:
+        user_id: The Telegram user ID to clean up
+        
+    Returns:
+        bool: True if cleanup was successful, False otherwise
+    """
+    print(f"[Database] Starting data cleanup for user {user_id}")
+    db = get_db_session()
+    
+    try:
+        with db.begin():
+            # Get the user
+            user = db.query(User).get(user_id)
+            if not user:
+                print(f"[Database] User {user_id} not found")
+                return False
+                
+            # Delete all messages
+            db.query(Message).filter(Message.user_id == user_id).delete()
+            
+            # Delete all themes
+            db.query(UserTheme).filter(UserTheme.user_id == user_id).delete()
+            
+            # Delete all subscriptions
+            db.query(Subscription).filter(Subscription.user_id == user_id).delete()
+            
+            # Reset user background information
+            user.background_completed = False
+            user.age = None
+            user.gender = None
+            user.therapy_experience = None
+            user.primary_concerns = None
+            user.messages_count = 0
+            user.weekly_messages_count = 0
+            user.last_message_reset = datetime.utcnow()
+            
+            print(f"[Database] Successfully cleaned up data for user {user_id}")
+            return True
+            
+    except Exception as e:
+        print(f"[Database] Error cleaning up user data: {str(e)}")
+        return False
+    finally:
+        db.close()
