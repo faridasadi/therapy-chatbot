@@ -30,7 +30,6 @@ async def main():
         # Initialize components
         print("Initializing Telegram bot...")
         bot_app = create_bot_application()
-        await bot_app.application.initialize()
         
         # Start FastAPI in the background
         api_task = asyncio.create_task(run_api())
@@ -38,9 +37,9 @@ async def main():
         # Import re-engagement system
         from re_engagement import run_re_engagement_system
         
-        # Start Telegram bot polling
+        # Start Telegram bot
         print("Starting Telegram bot...")
-        polling_task = asyncio.create_task(bot_app.application.updater.start_polling())
+        polling_task = asyncio.create_task(bot_app.start())
         
         print("Starting re-engagement system...")
         re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
