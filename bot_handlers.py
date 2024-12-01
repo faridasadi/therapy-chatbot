@@ -219,7 +219,7 @@ class BotApplication:
             can_respond, remaining = increment_message_count(user_id)
 
             if not can_respond:
-                await update.message.reply_text("You've reached your message limit for now. Please try again later.")
+                await update.message.reply_text("Message limit reached for now. You can try again in 24 hours.")
                 return
 
             # Get and send AI response with typing indicator
