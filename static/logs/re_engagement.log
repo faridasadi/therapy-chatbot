@@ -412,3 +412,8 @@ WHERE "user".last_message_reset <= %(last_message_reset_1)s AND "user".is_subscr
 2024-12-01 21:40:06,072 - re_engagement - INFO - Subscription reminders completed. Success: 1/1
 2024-12-01 21:40:06,307 - re_engagement - INFO - Re-engagement cycle completed successfully
 2024-12-01 21:40:06,307 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-01 21:46:28,265 - re_engagement - INFO - Starting re-engagement system
+2024-12-01 21:46:28,265 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-01 21:46:28,265 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-01 21:46:32,265 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-01 21:46:32,265 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0

@@ -65,3 +65,17 @@ class Subscription(Base):
     status = Column(String(32))
     
     user = relationship("User", back_populates="subscriptions")
+
+
+class MessageContext(Base):
+    __tablename__ = 'message_context'
+    
+    id = Column(Integer, primary_key=True)
+    message_id = Column(Integer, ForeignKey('message.id'))
+    context_key = Column(String(100))  # Type of context (e.g., 'emotion', 'topic', 'intent')
+    context_value = Column(Text)
+    relevance_score = Column(Float)  # How relevant this context is (0-1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # When this context should expire
+    
+    message = relationship("Message", backref="contexts")

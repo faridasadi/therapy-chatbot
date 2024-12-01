@@ -161,3 +161,53 @@ def clean_user_data(user_id: int) -> bool:
         except Exception as e:
             print(f"[Database] Error cleaning up user data: {str(e)}")
             return False
+
+def get_message_context(user_id: int, limit: int = 5, context_window: int = 24) -> list[Message]:
+    """Get recent message context for a user within the specified time window."""
+    with get_db_session() as db:
+        try:
+            cutoff_time = datetime.utcnow() - timedelta(hours=context_window)
+            return db.query(Message).filter(
+                Message.user_id == user_id,
+                Message.timestamp >= cutoff_time
+            ).order_by(Message.timestamp.desc()).limit(limit).all()
+        except Exception as e:
+            print(f"[Database] Error retrieving message context: {str(e)}")
+            return []
+
+def save_message_context(message_id: int, context_data: dict, expiry_hours: int = 24) -> bool:
+    """Save context information for a message."""
+    with get_db_session() as db:
+        try:
+            expires_at = datetime.utcnow() + timedelta(hours=expiry_hours)
+            contexts = [
+                MessageContext(
+                    message_id=message_id,
+                    context_key=key,
+                    context_value=str(value),
+                    relevance_score=1.0,
+                    expires_at=expires_at
+                )
+                for key, value in context_data.items()
+            ]
+            db.add_all(contexts)
+            db.commit()
+            return True
+        except Exception as e:
+            print(f"[Database] Error saving message context: {str(e)}")
+            db.rollback()
+            return False
+
+def clean_expired_context():
+    """Remove expired context entries."""
+    with get_db_session() as db:
+        try:
+            db.query(MessageContext).filter(
+                MessageContext.expires_at < datetime.utcnow()
+            ).delete()
+            db.commit()
+            return True
+        except Exception as e:
+            print(f"[Database] Error cleaning expired context: {str(e)}")
+            db.rollback()
+            return False
