@@ -211,3 +211,49 @@ def clean_expired_context():
             print(f"[Database] Error cleaning expired context: {str(e)}")
             db.rollback()
             return False
+
+
+def delete_user_data(user_id: int) -> bool:
+    """Delete all data associated with a user within a transaction."""
+    print(f"[Database] Starting data deletion for user ID: {user_id}")
+    with get_db_session() as db:
+        try:
+            # Start transaction
+            db.begin()
+            
+            # Delete message contexts first (due to foreign key relationships)
+            message_ids = db.query(Message.id).filter(Message.user_id == user_id).all()
+            if message_ids:
+                db.query(MessageContext).filter(
+                    MessageContext.message_id.in_([m.id for m in message_ids])
+                ).delete(synchronize_session=False)
+            
+            # Delete messages
+            deleted_messages = db.query(Message).filter(Message.user_id == user_id).delete()
+            print(f"[Database] Deleted {deleted_messages} messages")
+            
+            # Delete subscription records
+            deleted_subscriptions = db.query(Subscription).filter(
+                Subscription.user_id == user_id
+            ).delete()
+            print(f"[Database] Deleted {deleted_subscriptions} subscription records")
+            
+            # Delete user themes
+            deleted_themes = db.query(UserTheme).filter(
+                UserTheme.user_id == user_id
+            ).delete()
+            print(f"[Database] Deleted {deleted_themes} user themes")
+            
+            # Finally delete the user
+            deleted_user = db.query(User).filter(User.id == user_id).delete()
+            print(f"[Database] Deleted user record: {deleted_user}")
+            
+            # Commit the transaction
+            db.commit()
+            print(f"[Database] Successfully deleted all data for user ID: {user_id}")
+            return True
+            
+        except Exception as e:
+            print(f"[Database] Error deleting user data: {str(e)}")
+            db.rollback()
+            return False
