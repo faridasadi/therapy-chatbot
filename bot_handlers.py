@@ -219,7 +219,12 @@ class BotApplication:
             can_respond, remaining = increment_message_count(user_id)
 
             if not can_respond:
-                await update.message.reply_text("Message limit reached for now. You can try again in 24 hours.")
+                async with db_session() as db:
+                    user = db.query(User).get(user_id)
+                    if user:
+                        user.subscription_prompt_views += 1
+                        db.commit()
+                await update.message.reply_text(SUBSCRIPTION_PROMPT)
                 return
 
             # Get and send AI response with typing indicator
@@ -242,7 +247,8 @@ class BotApplication:
             # Notify about remaining messages
             if 0 < remaining <= 2:
                 await update.message.reply_text(
-                    f"Note: You have {remaining} messages remaining for now.")
+                    f"⚠️ Only {remaining} messages left! "
+                    "Upgrade now to unlock unlimited conversations!")
 
         except Exception as e:
             print(f"[Error] Message handling failed: {str(e)}")
