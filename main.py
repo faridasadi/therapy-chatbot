@@ -3,6 +3,7 @@ import signal
 import uvicorn
 from app import app
 from bot_handlers import create_bot_application
+from re_engagement import run_re_engagement_system
 
 async def run_api():
     config = uvicorn.Config(app, host="0.0.0.0", port=8000)
@@ -31,35 +32,35 @@ async def main():
         print("Initializing Telegram bot...")
         bot_app = create_bot_application()
         
-        # Start FastAPI in the background
+        # Create FastAPI task
         api_task = asyncio.create_task(run_api())
         
-        # Import re-engagement system
-        from re_engagement import run_re_engagement_system
+        # Start the bot application
+        print("Starting bot application...")
+        await bot_app.application.initialize()
+        await bot_app.application.start()
         
-        # Start Telegram bot
-        print("Starting Telegram bot...")
-        polling_task = asyncio.create_task(bot_app.start())
+        # Create re-engagement task
+        re_engagement_task = asyncio.create_task(
+            run_re_engagement_system(bot_app.application.bot)
+        )
         
-        print("Starting re-engagement system...")
-        re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
-        
-        # Keep the main loop running
-        while True:
-            await asyncio.sleep(1)
+        # Start updating
+        async with bot_app.application:
+            await bot_app.application.updater.start_polling()
+            print("Bot is running...")
             
-    except KeyboardInterrupt:
-        print("Received shutdown signal...")
+            # Wait for API and re-engagement tasks
+            await asyncio.gather(api_task, re_engagement_task)
+            
     except Exception as e:
         print(f"Fatal error in main loop: {e}")
         raise
     finally:
-        print("Shutting down...")
-        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-        [task.cancel() for task in tasks]
-        print("Waiting for tasks to complete...")
-        await asyncio.gather(*tasks, return_exceptions=True)
-        print("Cleanup completed")
+        print("Shutting down application...")
+        if 'bot_app' in locals():
+            await bot_app.application.stop()
+            await bot_app.application.shutdown()
 
 if __name__ == "__main__":
     try:
