@@ -29,26 +29,35 @@ async def main():
     try:
         print("Starting Therapyyy Bot Server...")
         
-        # Initialize bot
+        # Initialize components
+        print("Initializing Telegram bot...")
         bot_app = create_bot_application()
+        
+        # Initialize the application first
         await bot_app.application.initialize()
         
-        # Create tasks for all components
+        # Start polling in non-blocking mode
+        await bot_app.application.start()
+        
+        # Create other tasks
         tasks = [
-            run_api(),
-            run_re_engagement_system(bot_app.application.bot),
-            bot_app.application.updater.start_polling()
+            asyncio.create_task(run_api()),
+            asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
         ]
         
-        # Run all tasks concurrently
+        # Run tasks concurrently
         await asyncio.gather(*tasks)
-        
+            
     except Exception as e:
         print(f"Fatal error in main loop: {e}")
         raise
     finally:
         if 'bot_app' in locals():
-            await bot_app.stop()
+            try:
+                await bot_app.application.stop()
+                await bot_app.application.shutdown()
+            except Exception as e:
+                print(f"Error during shutdown: {e}")
 
 if __name__ == "__main__":
     try:
