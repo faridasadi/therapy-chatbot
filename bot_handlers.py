@@ -218,14 +218,14 @@ class BotApplication:
             save_message(user_id, message_text, True)
             can_respond, remaining = increment_message_count(user_id)
 
-            if not can_respond:
-                async with db_session() as db:
-                    user = db.query(User).get(user_id)
-                    if user:
-                        user.subscription_prompt_views += 1
-                        db.commit()
-                await update.message.reply_text(SUBSCRIPTION_PROMPT)
-                return
+            # if not can_respond:
+            #     async with db_session() as db:
+            #         user = db.query(User).get(user_id)
+            #         if user:
+            #             user.subscription_prompt_views += 1
+            #             db.commit()
+            #     await update.message.reply_text(SUBSCRIPTION_PROMPT)
+            #     return
 
             # Get and send AI response with typing indicator
             async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
@@ -245,10 +245,10 @@ class BotApplication:
                 await update.message.reply_text(response)
 
             # Notify about remaining messages
-            if 0 < remaining <= 2:
-                await update.message.reply_text(
-                    f"⚠️ Only {remaining} messages left! "
-                    "Upgrade now to unlock unlimited conversations!")
+            # if 0 < remaining <= 2:
+            #     await update.message.reply_text(
+            #         f"⚠️ Only {remaining} messages left! "
+            #         "Upgrade now to unlock unlimited conversations!")
 
         except Exception as e:
             print(f"[Error] Message handling failed: {str(e)}")

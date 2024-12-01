@@ -57,7 +57,8 @@ async def main():
         # Create other tasks
         tasks = [
             asyncio.create_task(run_api()),
-            asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
+            # Commented out re-engagement system as requested
+            # asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
         ]
         
         # Run tasks concurrently
