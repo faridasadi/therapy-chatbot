@@ -17,6 +17,12 @@ class User(Base):
     last_message_reset = Column(DateTime, default=datetime.utcnow)
     subscription_prompt_views = Column(Integer, default=0)
     interaction_style = Column(String(50), default='balanced')  # Store user's preferred interaction style
+    # Background information fields
+    age = Column(Integer, nullable=True)
+    gender = Column(String(32), nullable=True)
+    therapy_experience = Column(String(255), nullable=True)
+    primary_concerns = Column(String(500), nullable=True)
+    background_completed = Column(Boolean, default=False)
     
     messages = relationship("Message", back_populates="user")
     subscriptions = relationship("Subscription", back_populates="user")

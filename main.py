@@ -15,9 +15,7 @@ async def run_bot():
         bot_app = create_bot_application()
         print("[Bot] Bot application instance created")
         
-        print("[Bot] Initializing bot application and handlers...")
-        await bot_app.initialize()
-        print("[Bot] Bot initialization completed successfully")
+        print("[Bot] Bot application and handlers initialized")
         
         print("[Bot] Starting bot polling...")
         await bot_app.start()
@@ -53,38 +51,22 @@ async def main():
     try:
         print("Starting Therapyyy Bot Server...")
         
-        # Create the event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Set up signal handlers
-        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-        for s in signals:
-            loop.add_signal_handler(
-                s, lambda s=s: asyncio.create_task(shutdown(s, loop))
-            )
-        
-        # Set up exception handler
-        loop.set_exception_handler(handle_exception)
+        # Initialize components
+        print("Initializing Telegram bot...")
+        bot_app = create_bot_application()
         
         # Start FastAPI in the background
         api_task = asyncio.create_task(run_api())
         
-        # Initialize and start the bot
-        print("Initializing Telegram bot...")
-        bot_app = create_bot_application()
-        await bot_app.initialize()
-        
         # Import re-engagement system
         from re_engagement import run_re_engagement_system
         
-        # Run the bot
         print("Starting Telegram bot...")
-        await bot_app.start()
+        await bot_app.application.initialize()
+        await bot_app.application.updater.start_polling()
         
-        # Start re-engagement system
         print("Starting re-engagement system...")
-        re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.bot))
+        re_engagement_task = asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
         
         # Keep the main loop running
         while True:
