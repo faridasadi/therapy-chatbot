@@ -136,6 +136,7 @@ class BotApplication:
             return
 
         user_id = update.effective_user.id
+        print("[Debug] Clearnow command received from user:", user_id)
         try:
             await update.message.reply_text("🔄 Processing your data deletion request...")
             
