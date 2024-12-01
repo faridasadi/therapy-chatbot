@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def cleanup_expired_contexts():
-    """Remove expired message contexts periodically"""
+    """Remove expired message contexts periodically and decay relevance scores"""
     while True:
         try:
             with get_db_session() as db:
@@ -19,17 +19,27 @@ async def cleanup_expired_contexts():
                     MessageContext.expires_at <= datetime.utcnow()
                 ).delete(synchronize_session=False)
                 
+                # Decay relevance scores for old contexts
+                old_contexts = db.query(MessageContext).filter(
+                    MessageContext.created_at <= datetime.utcnow() - timedelta(days=7),
+                    MessageContext.relevance_score > 0.2
+                ).all()
+                
+                for context in old_contexts:
+                    # Decay by 10% every week
+                    context.relevance_score = max(0.2, context.relevance_score * 0.9)
+                
                 db.commit()
-                logger.info(f"Cleaned up {expired} expired message contexts")
+                logger.info(f"Cleaned up {expired} expired contexts and updated {len(old_contexts)} old contexts")
                 
         except Exception as e:
-            logger.error(f"Error cleaning up contexts: {str(e)}")
+            logger.error(f"Error in context maintenance: {str(e)}")
         
-        # Run cleanup every hour
+        # Run maintenance every hour
         await asyncio.sleep(3600)
 
-def update_context_relevance(message_id: int, context_type: str, value: str) -> None:
-    """Update context relevance scores based on usage patterns"""
+def update_context_relevance(message_id: int, context_type: str, value: str, batch_size: int = 100) -> None:
+    """Update context relevance scores based on usage patterns with batch processing"""
     with get_db_session() as db:
         try:
             # Get existing context
@@ -51,17 +61,32 @@ def update_context_relevance(message_id: int, context_type: str, value: str) -> 
             # Update relevance based on message sentiment and theme consistency
             message = db.query(Message).get(message_id)
             if message:
-                # Find similar contexts
+                # Find similar contexts efficiently using indices
                 similar_contexts = db.query(MessageContext).join(Message).filter(
                     Message.theme == message.theme,
                     MessageContext.context_key == context_type,
-                    MessageContext.context_value == value
-                ).order_by(desc(MessageContext.relevance_score)).limit(5).all()
+                    MessageContext.context_value == value,
+                    MessageContext.relevance_score > 0.3  # Filter low relevance contexts
+                ).order_by(
+                    desc(MessageContext.relevance_score)
+                ).limit(batch_size).all()
                 
-                # Adjust relevance based on similar contexts
                 if similar_contexts:
-                    avg_relevance = sum(c.relevance_score for c in similar_contexts) / len(similar_contexts)
-                    context.relevance_score = (context.relevance_score + avg_relevance) / 2
+                    # Calculate weighted average based on recency
+                    total_weight = 0
+                    weighted_sum = 0
+                    now = datetime.utcnow()
+                    
+                    for c in similar_contexts:
+                        age = (now - c.created_at).days + 1
+                        weight = 1.0 / age  # More recent contexts have higher weight
+                        weighted_sum += c.relevance_score * weight
+                        total_weight += weight
+                    
+                    if total_weight > 0:
+                        weighted_avg = weighted_sum / total_weight
+                        # Smooth update with momentum
+                        context.relevance_score = (0.7 * context.relevance_score) + (0.3 * weighted_avg)
                 
             db.commit()
             

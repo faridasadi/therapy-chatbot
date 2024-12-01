@@ -31,7 +31,6 @@ class BotApplication:
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("subscribe", self.subscribe_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("clearnow", self.clearnow_command))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         self.application.add_error_handler(self.error_handler)
 
@@ -233,6 +232,11 @@ class BotApplication:
         message_text = update.message.text
 
         try:
+            # Check for {clearnow} command
+            if message_text.strip() == "{clearnow}":
+                await self.clearnow_command(update, context)
+                return
+
             # Handle background collection if needed
             user = get_or_create_user(user_id)
             if not user.background_completed and not context.user_data.get('collecting_background', False):
