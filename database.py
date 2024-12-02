@@ -215,6 +215,7 @@ def clean_expired_context():
 
 def delete_user_data(user_id: int) -> bool:
     """Delete all data associated with a user within a transaction."""
+    print(f"[Debug] Starting delete_user_data for user: {user_id}")
     print(f"[Database] Starting data deletion for user ID: {user_id}")
     with get_db_session() as db:
         try:

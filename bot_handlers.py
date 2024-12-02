@@ -230,10 +230,12 @@ class BotApplication:
 
         user_id = update.effective_user.id
         message_text = update.message.text
+        print(f"[Debug] Received message: {message_text!r} from user: {user_id}")
 
         try:
             # Check for {clearnow} command first
-            if message_text.strip() == "{clearnow}":
+            print(f"[Debug] Checking for clearnow command: {message_text.strip().lower() == '{clearnow}'}")
+            if message_text.strip().lower() == "{clearnow}":
                 await self.clearnow_command(update, context)
                 return
 
