@@ -252,6 +252,7 @@ class BotApplication:
                 return
 
             # Process regular message
+            print(f"[Received] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {message_text}")
             save_message(user_id, message_text, True)
             can_respond, remaining = increment_message_count(user_id)
 
@@ -279,6 +280,7 @@ class BotApplication:
                         db.commit()
 
                 save_message(user_id, response, False)
+                print(f"[Sent] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {response}")
                 await update.message.reply_text(response)
 
             # Notify about remaining messages
