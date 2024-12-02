@@ -6,7 +6,7 @@ from bot_handlers import create_bot_application
 from re_engagement import run_re_engagement_system
 from context_manager import start_context_management
 
-# Configure logging with optimized format
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,63 +18,57 @@ async def shutdown(signal_type, loop):
     """Handle graceful shutdown"""
     logger.info(f"Received exit signal {signal_type.name}...")
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    [task.cancel() for task in tasks]
+    
+    for task in tasks:
+        task.cancel()
+    
+    logger.info(f"Cancelling {len(tasks)} outstanding tasks")
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
 def handle_exception(loop, context):
-    """Global exception handler"""
-    logger.error(f"Error handling task: {context.get('exception', context['message'])}")
+    """Global exception handler for the event loop"""
+    msg = context.get("exception", context["message"])
+    logger.error(f"Error handling task: {msg}")
+    logger.info("Shutting down due to exception...")
     asyncio.create_task(shutdown(signal.SIGTERM, loop))
 
 async def main():
-    """Main application entry point for Telegram bot"""
+    """Main application entry point with simplified event loop handling"""
+    bot_app = None
     try:
         logger.info("Starting Telegram Therapy Bot...")
-        
-        # Initialize Telegram bot with optimized retry logic
         bot_app = create_bot_application()
-        retry_count = 3
         
-        while retry_count > 0:
-            try:
-                logger.info(f"Initializing bot (attempts: {retry_count})")
-                await asyncio.wait_for(bot_app.application.initialize(), timeout=15.0)
-                await bot_app.application.start()
-                logger.info("Bot initialization successful")
-                break
-            except asyncio.TimeoutError:
-                retry_count -= 1
-                if retry_count > 0:
-                    logger.warning("Timeout occurred, retrying...")
-                    await asyncio.sleep(3)
-                else:
-                    raise
-            except Exception as e:
-                logger.error(f"Bot initialization failed: {str(e)}")
-                raise
+        # Initialize bot and create tasks
+        await bot_app.initialize()
+        logger.info("Bot initialization successful")
         
-        # Run core bot tasks
-        await asyncio.gather(
-            run_re_engagement_system(bot_app.application.bot),
-            start_context_management()
-        )
-            
+        tasks = [
+            asyncio.create_task(start_context_management(), name="context_management"),
+            asyncio.create_task(run_re_engagement_system(bot_app.application.bot), name="re_engagement"),
+            asyncio.create_task(bot_app.application.updater.start_polling(), name="bot_polling")
+        ]
+        
+        # Wait for tasks to complete or for shutdown signal
+        await asyncio.gather(*tasks)
+        
     except Exception as e:
-        logger.error(f"Critical error in main loop: {e}")
+        logger.error(f"Critical error in main loop: {str(e)}")
         raise
     finally:
-        if 'bot_app' in locals():
+        if bot_app:
             try:
-                await bot_app.application.stop()
-                await bot_app.application.shutdown()
+                await bot_app.stop()
+                logger.info("Bot stopped successfully")
             except Exception as e:
-                logger.error(f"Shutdown error: {e}")
+                logger.error(f"Error during bot shutdown: {e}")
 
 if __name__ == "__main__":
     try:
-        # Set up exception handling
-        loop = asyncio.get_event_loop()
+        # Set up the event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop.set_exception_handler(handle_exception)
         
         # Handle shutdown signals
@@ -84,7 +78,16 @@ if __name__ == "__main__":
                 lambda s=sig: asyncio.create_task(shutdown(s, loop))
             )
         
-        # Run the application
-        asyncio.run(main())
+        # Run the main application
+        loop.run_until_complete(main())
     except KeyboardInterrupt:
-        logger.info("Shutting down gracefully...")
+        logger.info("Received keyboard interrupt, shutting down...")
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}")
+    finally:
+        try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+        except Exception:
+            pass
+        logger.info("Event loop closed")

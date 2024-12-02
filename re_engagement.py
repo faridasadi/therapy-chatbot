@@ -1,15 +1,16 @@
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, not_
+from sqlalchemy import func, and_, not_, text
 from sqlalchemy.orm import immediateload
 from database import get_db_session
 from models import User, Message, UserTheme, Subscription
 from config import WEEKLY_FREE_MESSAGES
 from telegram import Bot
-from telegram.error import TelegramError
+from telegram.error import TelegramError, TimedOut, NetworkError
 from typing import List, Dict, Tuple
 import asyncio
 import json
 import logging
+import random
 from time import time
 
 # Configure logging
@@ -48,23 +49,48 @@ async def check_rate_limit() -> bool:
     return True
 
 async def send_telegram_message(bot: Bot, user_id: int, message: str) -> bool:
-    """Helper function to send Telegram messages with rate limiting."""
-    try:
-        if not await check_rate_limit():
-            logger.warning(f"Rate limit exceeded, delaying message to user {user_id}")
-            await asyncio.sleep(60)
+    """Enhanced helper function for sending Telegram messages with improved error handling."""
+    max_retries = 3
+    base_delay = 1
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            if not await check_rate_limit():
+                logger.warning(f"Rate limit exceeded, delaying message to user {user_id}")
+                await asyncio.sleep(60)
             
-        logger.info(f"Attempting to send message to user {user_id}")
-        await bot.send_message(chat_id=user_id, text=message)
-        logger.info(f"Successfully sent message to user {user_id}")
-        return True
+            logger.info(f"Attempting to send message to user {user_id} (attempt {attempt + 1}/{max_retries})")
+            
+            async with asyncio.timeout(10.0):
+                await bot.send_message(chat_id=user_id, text=message)
+                logger.info(f"Successfully sent message to user {user_id}")
+                return True
+                
+        except asyncio.TimeoutError as e:
+            last_error = f"Timeout sending message (attempt {attempt + 1}/{max_retries})"
+            logger.error(last_error)
+            
+        except (TimedOut, NetworkError) as e:
+            last_error = f"Network error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            logger.error(last_error)
+            
+        except TelegramError as e:
+            last_error = f"Telegram API error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            logger.error(last_error)
+            
+        except Exception as e:
+            last_error = f"Unexpected error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            logger.error(last_error)
         
-    except TelegramError as e:
-        logger.error(f"Telegram error sending message to user {user_id}: {str(e)}")
-        return False
-    except Exception as e:
-        logger.error(f"Unexpected error sending message to user {user_id}: {str(e)}")
-        return False
+        if attempt < max_retries - 1:
+            # Exponential backoff with jitter
+            delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), 30)
+            logger.info(f"Retrying in {delay:.2f} seconds...")
+            await asyncio.sleep(delay)
+            
+    logger.error(f"Failed to send message after {max_retries} attempts: {last_error}")
+    return False
 
 async def notify_weekly_reset(bot: Bot):
     """Notify users about their weekly message quota reset."""
@@ -123,13 +149,13 @@ async def re_engage_inactive_users(bot: Bot):
             latest_messages = (
                 db.query(
                     Message.user_id,
-                    func.max(Message.timestamp).label('last_message')
+                    func.max(Message.created_at).label('last_message')
                 )
                 .group_by(Message.user_id)
                 .having(
                     and_(
-                        func.max(Message.timestamp) <= three_days_ago,
-                        func.max(Message.timestamp) > thirty_days_ago
+                        func.max(Message.created_at) <= three_days_ago,
+                        func.max(Message.created_at) > thirty_days_ago
                     )
                 )
                 .subquery()
@@ -199,73 +225,135 @@ async def re_engage_inactive_users(bot: Bot):
 async def subscription_reminders(bot: Bot):
     """Send subscription reminders to active free users."""
     logger.info("Starting subscription reminder process")
-    with get_db_session() as db:
-        try:
-            # Optimized query with proper filtering
-            active_users = (
-                db.query(User)
-                .filter(
-                    and_(
-                        User.is_subscribed == False,
-                        User.messages_count >= 15,
-                        User.subscription_prompt_views < 5
-                    )
-                )
-                .with_for_update(skip_locked=True)
-                .all()
-            )
-                
-            logger.info(f"Found {len(active_users)} users eligible for subscription reminders")
-            
-            success_count = 0
-            for user in active_users:
-                logger.info(f"Processing subscription reminder for user {user.id}")
-                message = (
-                    "📊 I've noticed you're getting great value from our conversations!\n\n"
-                    "Upgrade to unlimited access to:\n"
-                    "✨ Chat anytime without limits\n"
-                    "🎯 Get more personalized responses\n"
-                    "💫 Continue your therapy journey without interruption\n\n"
-                    "Ready to upgrade? Use /subscribe to get started!"
-                )
-                
-                user.subscription_prompt_views += 1
-                db.commit()
-                
-                if await send_telegram_message(bot, user.id, message):
-                    success_count += 1
-                    
-            logger.info(f"Subscription reminders completed. Success: {success_count}/{len(active_users)}")
+    max_retries = 3
+    base_delay = 1
+    last_error = None
 
+    for attempt in range(max_retries):
+        try:
+            with get_db_session() as db:
+                # Verify database connection
+                db.execute(text("SELECT 1")).scalar()
+                
+                # Optimized query with proper filtering
+                active_users = (
+                    db.query(User)
+                    .filter(
+                        and_(
+                            User.is_subscribed == False,
+                            User.messages_count >= 15,
+                            User.subscription_prompt_views < 5
+                        )
+                    )
+                    .with_for_update(skip_locked=True)
+                    .all()
+                )
+                
+                if active_users is not None:  # Successful query
+                    break
+                    
         except Exception as e:
-            logger.error(f"Error in subscription_reminders: {str(e)}")
-            db.rollback()
-            raise
+            last_error = f"Database error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            logger.error(last_error)
+            
+            if attempt < max_retries - 1:
+                delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), 30)
+                logger.info(f"Retrying database connection in {delay:.2f} seconds...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"All database connection attempts failed: {last_error}")
+                return  # Skip this cycle if all retries fail
+                
+    try:
+        logger.info(f"Found {len(active_users)} users eligible for subscription reminders")
+        
+        success_count = 0
+        failed_users = []
+        
+        for user in active_users:
+            logger.info(f"Processing subscription reminder for user {user.id}")
+            message = (
+                "📊 I've noticed you're getting great value from our conversations!\n\n"
+                "Upgrade to unlimited access to:\n"
+                "✨ Chat anytime without limits\n"
+                "🎯 Get more personalized responses\n"
+                "💫 Continue your therapy journey without interruption\n\n"
+                "Ready to upgrade? Use /subscribe to get started!"
+            )
+            
+            try:
+                with get_db_session() as db:
+                    # Verify user still exists and lock row
+                    current_user = db.query(User).filter(User.id == user.id).with_for_update(nowait=True).first()
+                    if current_user:
+                        current_user.subscription_prompt_views += 1
+                        db.commit()
+                        
+                        if await send_telegram_message(bot, user.id, message):
+                            success_count += 1
+                        else:
+                            failed_users.append(user.id)
+                    else:
+                        logger.warning(f"User {user.id} no longer exists")
+                        
+            except Exception as user_error:
+                logger.error(f"Error processing user {user.id}: {str(user_error)}")
+                failed_users.append(user.id)
+                continue
+                
+        logger.info(f"Subscription reminders completed. Success: {success_count}/{len(active_users)}")
+        if failed_users:
+            logger.warning(f"Failed to process users: {failed_users}")
+
+    except Exception as e:
+        logger.error(f"Error in subscription_reminders: {str(e)}")
+        raise
 
 async def run_re_engagement_system(bot: Bot):
-    """Main function to run all re-engagement tasks."""
+    """Main function to run all re-engagement tasks with enhanced error handling."""
     logger.info("Starting re-engagement system")
     
     while True:
         try:
             logger.info("Beginning re-engagement cycle")
             
-            # Execute re-engagement tasks with proper delays
-            await notify_weekly_reset(bot)
+            # Execute re-engagement tasks with proper delays and monitoring
+            try:
+                logger.info("Starting weekly reset notifications")
+                await notify_weekly_reset(bot)
+                logger.info("Weekly reset notifications completed")
+            except Exception as e:
+                logger.error(f"Error in weekly reset task: {str(e)}")
+            
             await asyncio.sleep(60)  # Rate limiting between tasks
             
-            await re_engage_inactive_users(bot)
+            try:
+                logger.info("Starting inactive users re-engagement")
+                await re_engage_inactive_users(bot)
+                logger.info("Inactive users re-engagement completed")
+            except Exception as e:
+                logger.error(f"Error in inactive users task: {str(e)}")
+            
             await asyncio.sleep(60)  # Rate limiting between tasks
             
-            await subscription_reminders(bot)
+            try:
+                logger.info("Starting subscription reminders")
+                await subscription_reminders(bot)
+                logger.info("Subscription reminders completed")
+            except Exception as e:
+                logger.error(f"Error in subscription reminders task: {str(e)}")
             
-            logger.info("Re-engagement cycle completed successfully")
+            logger.info("Re-engagement cycle completed")
             
             # Wait for 6 hours before next check
             logger.info("Waiting 6 hours before next cycle")
             await asyncio.sleep(6 * 60 * 60)
             
+        except asyncio.CancelledError:
+            logger.info("Re-engagement system shutdown requested")
+            break
         except Exception as e:
             logger.error(f"Critical error in re-engagement system: {str(e)}")
             logger.info("Waiting 5 minutes before retry")
             await asyncio.sleep(300)  # Wait 5 minutes on error
+            continue

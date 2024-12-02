@@ -11,29 +11,42 @@ import logging
 from functools import lru_cache
 from models import User, Message, UserTheme, Subscription, MessageContext
 from base import Base
+from sqlalchemy import text
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Telegram-only optimized engine configuration
+# Enhanced engine configuration with optimized connection pooling and better timeout handling
 engine = create_engine(
     os.getenv('DATABASE_URL'),
     poolclass=QueuePool,
-    pool_size=2,  # Reduced pool size for Telegram-only
-    max_overflow=2,  # Minimal overflow for Telegram traffic
-    pool_timeout=5,  # Faster timeout for better error detection
-    pool_recycle=600,  # Recycle connections every 10 minutes
-    pool_pre_ping=True,  # Connection verification
-    echo_pool=False,  # Production logging
+    pool_size=10,  # Optimized pool size
+    max_overflow=20,  # Controlled overflow connections
+    pool_timeout=30,  # Connection acquisition timeout
+    pool_recycle=1800,  # Recycle connections every 30 minutes
+    pool_pre_ping=True,  # Verify connections before use
+    echo_pool=True,  # Monitor pool activity
     connect_args={
-        'connect_timeout': 5,  # Reduced connection timeout
+        'connect_timeout': 10,
         'application_name': 'telegram_therapy_bot',
-        'options': '-c statement_timeout=5000'  # 5 second query timeout
+        'options': '-c statement_timeout=30000 -c idle_in_transaction_session_timeout=30000',
+        'keepalives': 1,
+        'keepalives_idle': 30,
+        'keepalives_interval': 10,
+        'keepalives_count': 3,
+        'client_encoding': 'utf8'
     }
 )
 
+# Configure session factory with transaction management
+SessionFactory = sessionmaker(
+    bind=engine,
+    autocommit=False,  # Explicit transaction management
+    autoflush=True,
+    expire_on_commit=False  # Prevent expired object access
+)
+
 # Enhanced error handling for connection pool
-from sqlalchemy import event
 @event.listens_for(engine, 'engine_connect')
 def ping_connection(connection, branch):
     if branch:
@@ -54,33 +67,63 @@ def get_cached_user(user_id: int) -> Optional[User]:
     with get_db_session() as db:
         return db.query(User).get(user_id)
 
-# Create session factory
-SessionFactory = sessionmaker(bind=engine)
-ScopedSession = scoped_session(SessionFactory)
-
+# Session management is handled by the SessionFactory defined above
 @contextmanager
 def get_db_session():
-    """Enhanced context manager for database sessions with proper cleanup"""
-    session = ScopedSession()
-    try:
-        yield session
-    except Exception as e:
-        logger.error(f"Database session error: {str(e)}")
-        session.rollback()
-        raise
-    finally:
+    """Enhanced context manager for database sessions with improved transaction management"""
+    session = None
+    max_retries = 3
+    retry_delay = 1  # seconds
+    
+    for attempt in range(max_retries):
         try:
-            session.close()
+            # Create a new session
+            session = SessionFactory()
+            
+            # Verify connection is alive without starting a transaction
+            session.execute(text("SELECT 1"))
+            logger.info("Database connection established and verified")
+            
+            yield session
+            
+            # Commit any pending changes
+            if session.dirty or session.new or session.deleted:
+                session.commit()
+                logger.info("Database transaction committed successfully")
+            break
+            
         except Exception as e:
-            logger.error(f"Error closing session: {str(e)}")
+            logger.error(f"Database session error (attempt {attempt + 1}/{max_retries}): {str(e)}")
+            if session:
+                try:
+                    if session.in_transaction():
+                        session.rollback()
+                        logger.info("Session rolled back successfully")
+                except Exception as rollback_error:
+                    logger.error(f"Error during rollback: {str(rollback_error)}")
+            
+            if attempt < max_retries - 1:
+                retry_time = retry_delay * (2 ** attempt)  # Exponential backoff
+                logger.info(f"Retrying database connection in {retry_time} seconds")
+                import time
+                time.sleep(retry_time)
+                continue
+            logger.error("All database connection attempts failed")
+            raise
+            
         finally:
-            ScopedSession.remove()
+            if session:
+                try:
+                    session.close()
+                    logger.info("Database session closed successfully")
+                except Exception as close_error:
+                    logger.error(f"Error closing session: {str(close_error)}")
 
 def init_database():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
 
-# Rest of the existing database.py content...
+# Rest of the database functions...
 from models import User, Message, UserTheme, Subscription, MessageContext
 
 def get_or_create_user(user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> User:
@@ -161,43 +204,94 @@ def _process_message_batch():
         raise
     return []
 
+def _process_single_message(message_data: dict) -> Message:
+    """Process a single message immediately."""
+    try:
+        with get_db_session() as db:
+            message = Message(**message_data)
+            db.add(message)
+            db.commit()
+            db.refresh(message)
+            logger.info(f"Single message processed successfully for user {message_data['user_id']}")
+            return message
+    except Exception as e:
+        logger.error(f"Error processing single message: {str(e)}")
+        raise
 def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> Message:
-    """Queue message for batch processing."""
+    """Enhanced message saving with optimized batch processing and improved error handling."""
     logger.info(f"Queueing message for user {user_id}")
     message_data = {
         'user_id': user_id,
         'content': content,
         'is_from_user': is_from_user,
         'theme': theme,
-        'sentiment_score': sentiment_score
+        'sentiment_score': sentiment_score,
+        'created_at': datetime.utcnow()  # Use created_at instead of timestamp
     }
+    
+    max_retries = 3
+    retry_delay = 1
+    last_error = None
+    
+    # Process immediately if queue is getting full or it's a bot response
+    if _message_queue.qsize() >= _batch_size * 0.8 or not is_from_user:
+        logger.info("Processing message immediately")
+        for attempt in range(max_retries):
+            try:
+                return _process_single_message(message_data)
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"Error processing single message (attempt {attempt + 1}/{max_retries}): {last_error}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (2 ** attempt))
+                    continue
+                raise Exception(f"Failed to save message after {max_retries} attempts: {last_error}")
     
     _message_queue.put(message_data)
     
-    # Process batch if size threshold reached or timeout elapsed
+    # Process batch with improved error handling
     with _batch_lock:
         global _last_batch_time
         current_time = time.time()
         
         if _message_queue.qsize() >= _batch_size or (current_time - _last_batch_time) >= _batch_timeout:
-            messages = _process_message_batch()
-            _last_batch_time = current_time
-            
-            # Return the specific message for this request
-            if messages:
-                return next(
-                    (msg for msg in messages 
-                     if msg.user_id == user_id and msg.content == content),
-                    messages[-1]  # Fallback to last message if specific one not found
-                )
+            for attempt in range(max_retries):
+                try:
+                    messages = _process_message_batch()
+                    _last_batch_time = current_time
+                    
+                    if messages:
+                        return next(
+                            (msg for msg in messages 
+                             if msg.user_id == user_id and msg.content == content),
+                            messages[-1]
+                        )
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    logger.error(f"Error processing message batch (attempt {attempt + 1}/{max_retries}): {last_error}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (2 ** attempt))
+                        continue
+                    raise Exception(f"Failed to process message batch after {max_retries} attempts: {last_error}")
     
-    # If we didn't process a batch, create a single message
-    with get_db_session() as db:
-        message = Message(**message_data)
-        db.add(message)
-        db.commit()
-        db.refresh(message)
-        return message
+    # If we didn't process a batch, create a single message with retries
+    for attempt in range(max_retries):
+        try:
+            with get_db_session() as db:
+                message = Message(**message_data)
+                db.add(message)
+                db.commit()
+                db.refresh(message)
+                logger.info(f"Message saved successfully for user {user_id}")
+                return message
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"Error saving single message (attempt {attempt + 1}/{max_retries}): {last_error}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (2 ** attempt))
+                continue
+            raise Exception(f"Failed to save message after {max_retries} attempts: {last_error}")
 
 def increment_message_count(user_id: int) -> tuple[bool, int]:
     logger.info(f"Checking message count for user {user_id}")
@@ -377,8 +471,8 @@ def get_message_context(user_id: int, limit: int = 5, context_window: int = 24) 
             cutoff_time = datetime.utcnow() - timedelta(hours=context_window)
             return db.query(Message).filter(
                 Message.user_id == user_id,
-                Message.timestamp >= cutoff_time
-            ).order_by(Message.timestamp.desc()).limit(limit).all()
+                Message.created_at >= cutoff_time
+            ).order_by(Message.created_at.desc()).limit(limit).all()
         except Exception as e:
             print(f"[Database] Error retrieving message context: {str(e)}")
             return []

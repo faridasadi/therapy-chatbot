@@ -1,38 +1,124 @@
 import os
 from datetime import datetime
 from telegram import Update
-from telegram.error import TelegramError
+from telegram.error import TelegramError, TimedOut, NetworkError
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import httpx
+import random
+from sqlalchemy import text
 from config import TELEGRAM_TOKEN as TELEGRAM_BOT_TOKEN, WELCOME_MESSAGE, HELP_MESSAGE, SUBSCRIPTION_PROMPT
 from models import Message, User
 from ai_service import get_therapy_response
 from database import get_db_session, get_or_create_user
 from subscription import check_subscription_status, increment_message_count, save_message
+from sqlalchemy import text
 import asyncio
 from contextlib import asynccontextmanager
+import logging
+from datetime import datetime
+from typing import Optional, Tuple
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def db_session():
-    """Context manager for database sessions"""
-    session = get_db_session()
+    """Enhanced async context manager for database sessions with improved error handling and retry logic"""
+    session = None
+    max_retries = 3
+    retry_delay = 1  # seconds
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            # Get session using the enhanced session manager with timeout
+            with get_db_session() as db:
+                session = db
+                logger.info(f"Async database session started (attempt {attempt + 1}/{max_retries})")
+                
+                # Verify connection is alive with timeout and proper connection handling
+                try:
+                    # Use a transaction to ensure the connection is truly alive
+                    async with asyncio.timeout(5.0):
+                        await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: db.execute(text("SELECT 1")).scalar()
+                        )
+                    logger.info("Database connection verified")
+                    
+                    # Keep the session alive with periodic pings
+                    ping_task = asyncio.create_task(self._keep_db_alive(db))
+                    try:
+                        yield db
+                        logger.info("Async database session completed successfully")
+                        return  # Success, exit the loop
+                    finally:
+                        ping_task.cancel()
+                        try:
+                            await ping_task
+                        except asyncio.CancelledError:
+                            pass
+                        
+                except asyncio.TimeoutError:
+                    logger.error("Database connection verification timeout")
+                    if session:
+                        session.close()
+                    raise
+                except Exception as e:
+                    logger.error(f"Database connection verification failed: {str(e)}")
+                    if session:
+                        session.close()
+                    raise
+                
+        except asyncio.TimeoutError as e:
+            last_error = f"Database connection timeout (attempt {attempt + 1}/{max_retries})"
+            logger.error(last_error)
+        except Exception as e:
+            last_error = f"Database session error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            logger.error(last_error)
+        
+        if attempt < max_retries - 1:
+            wait_time = min(retry_delay * (2 ** attempt) + random.uniform(0, 1), 30)  # Add jitter
+            logger.info(f"Retrying in {wait_time:.2f} seconds...")
+            await asyncio.sleep(wait_time)
+        else:
+            logger.error(f"All database connection attempts failed: {last_error}")
+            raise Exception(f"Database connection failed after {max_retries} attempts: {last_error}")
+
+async def _keep_db_alive(self, db):
+    """Keep database connection alive with periodic pings"""
     try:
-        yield session
-    finally:
-        session.close()
+        while True:
+            await asyncio.sleep(30)  # Ping every 30 seconds
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.execute(text("SELECT 1")).scalar()
+            )
+            logger.debug("Database connection ping successful")
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Database ping failed: {str(e)}")
 
 class BotApplication:
     def __init__(self):
         self.debug_mode = True
         print("[Bot] Initializing bot application")
-        self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-        # Register handlers
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("subscribe", self.subscribe_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
-        self.application.add_error_handler(self.error_handler)
+        # Enhanced application builder with proper connection and timeout settings
+        self.application = (
+            Application.builder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .concurrent_updates(True)  # Enable concurrent updates
+            .connection_pool_size(8)  # Connection pool size
+            .pool_timeout(2.0)  # Pool timeout
+            .read_timeout(30.0)  # Read timeout
+            .write_timeout(10.0)  # Write timeout
+            .connect_timeout(10.0)  # Connect timeout
+            .build()
+        )
+        logger.info("Bot application created with token length: %d", len(TELEGRAM_BOT_TOKEN))
+        self._health_check_task = None
 
     async def _keep_typing(self, chat_id: int, bot):
         try:
@@ -225,34 +311,140 @@ class BotApplication:
                 await update.message.reply_text("An error occurred. Please try again.")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not update.effective_user or not update.message or not update.message.text:
+        """Enhanced message handler with improved error recovery and connection management"""
+        logger.info("=== Starting new message handling ===")
+        logger.info("Received message: %s from user: %s", 
+            update.message.text[:50] if update.message else "No message",
+            update.effective_user.id if update.effective_user else "No user"
+        )
+        
+        # Enhanced validation with detailed logging
+        if not update.effective_user:
+            logger.error("Missing effective user in update")
             return
+        if not update.message:
+            logger.error("Missing message in update")
+            return
+        if not update.message.text:
+            logger.error("Missing message text in update")
+            return
+            
+        # Log complete message details for debugging
+        logger.info("Message validation successful - "
+                   f"Chat ID: {update.effective_chat.id}, "
+                   f"User ID: {update.effective_user.id}, "
+                   f"Message ID: {update.message.message_id}")
 
         user_id = update.effective_user.id
         message_text = update.message.text
+        
+        logger.info(f"Message details - Chat ID: {update.effective_chat.id}, User ID: {update.effective_user.id}, Message ID: {update.message.message_id}")
+        logger.debug("Message content preview: %s...", message_text[:50])
+        
+        # Enhanced message flow logging
+        logger.info("Starting message processing pipeline")
 
         try:
             # Check for {clearnow} command
             if message_text.strip() == "{clearnow}":
+                logger.info("Clearnow command received from user %s", user_id)
                 await self.clearnow_command(update, context)
                 return
 
-            # Handle background collection if needed
-            user = get_or_create_user(user_id)
-            if not user.background_completed and not context.user_data.get('collecting_background', False):
-                context.user_data['collecting_background'] = True
-                context.user_data['background_step'] = 'age'
-                await update.message.reply_text(
-                    "Before we continue, I'd like to learn a bit about you to provide better support.\n\n"
-                    "What is your age? (Please enter a number)")
-                return
+            async with db_session() as db:
+                # Handle background collection if needed
+                user = db.query(User).get(user_id)
+                if not user:
+                    user = User(
+                        id=user_id,
+                        username=update.effective_user.username,
+                        first_name=update.effective_user.first_name,
+                        joined_at=datetime.utcnow()
+                    )
+                    db.add(user)
+                    db.commit()
+
+                if not user.background_completed and not context.user_data.get('collecting_background', False):
+                    context.user_data['collecting_background'] = True
+                    context.user_data['background_step'] = 'age'
+                    await update.message.reply_text(
+                        "Before we continue, I'd like to learn a bit about you to provide better support.\n\n"
+                        "What is your age? (Please enter a number)")
+                    return
 
             if context.user_data.get('collecting_background', False):
                 await self.handle_background_collection(update, context, user_id, message_text)
                 return
 
-            # Process regular message
-            save_message(user_id, message_text, True)
+            # Enhanced message processing with improved monitoring and retry logic
+            retry_count = 5  # Increased retry attempts
+            base_retry_delay = 1
+            message_saved = False
+            last_error = None
+            
+            for attempt in range(retry_count):
+                try:
+                    logger.info(f"Starting message processing (attempt {attempt + 1}/{retry_count})")
+                    async with db_session() as db:
+                        # Monitor database connection health
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    lambda: db.execute(text("SELECT 1")).scalar()
+                                ),
+                                timeout=5.0
+                            )
+                        except Exception as e:
+                            logger.error(f"Database health check failed: {str(e)}")
+                            raise
+                        
+                        # Optimistic locking with retry on conflict
+                        try:
+                            # Save message with transaction isolation
+                            message = save_message(user_id, message_text, True)
+                            logger.info(f"Message {message.id if message else 'None'} saved to database")
+                            
+                            # Update user activity with row-level locking
+                            user = db.query(User).with_for_update(nowait=True).get(user_id)
+                            if user:
+                                user.last_activity = datetime.utcnow()
+                                logger.info(f"User {user_id} activity timestamp updated")
+                            
+                            db.commit()
+                            logger.info("Database transaction completed successfully")
+                            message_saved = True
+                            break
+                            
+                        except Exception as e:
+                            db.rollback()
+                            logger.error(f"Transaction error: {str(e)}")
+                            raise
+                            
+                except asyncio.TimeoutError as e:
+                    last_error = f"Database timeout (attempt {attempt + 1}/{retry_count})"
+                    logger.error(last_error)
+                except Exception as e:
+                    last_error = f"Message processing error (attempt {attempt + 1}/{retry_count}): {str(e)}"
+                    logger.error(last_error)
+                
+                if attempt < retry_count - 1:
+                    # Exponential backoff with jitter
+                    wait_time = min(base_retry_delay * (2 ** attempt) + random.uniform(0, 1), 30)
+                    logger.info(f"Retrying in {wait_time:.2f} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"All message processing attempts failed: {last_error}")
+            
+            if not message_saved:
+                logger.error("Failed to save message after all attempts")
+                await update.message.reply_text(
+                    "I'm having trouble processing your message. Please try again in a moment."
+                )
+                return
+                
+            logger.info("Message successfully saved and ready for processing")
+
             can_respond, remaining = increment_message_count(user_id)
 
             if not can_respond:
@@ -264,22 +456,124 @@ class BotApplication:
                 await update.message.reply_text(SUBSCRIPTION_PROMPT)
                 return
 
-            # Get and send AI response with typing indicator
-            async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
-                response, theme, sentiment = get_therapy_response(message_text, user_id)
+            # Create typing indicator task
+            typing_task = asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot))
+            
+            try:
+                # Enhanced AI response handling with improved retry logic and error recovery
+                response = theme = sentiment = None
+                max_retries = 5  # Increased retry attempts
+                base_delay = 2
+                max_delay = 30
+                last_error = None
+
+                for attempt in range(max_retries):
+                    try:
+                        logger.info(f"Attempting to get AI response (attempt {attempt + 1}/{max_retries})")
+                        
+                        # Add timeout for the entire operation
+                        async with asyncio.timeout(45.0):  # Increased timeout for the whole operation
+                            response, theme, sentiment = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, get_therapy_response, message_text, user_id
+                                ),
+                                timeout=30.0
+                            )
+                            
+                        if response:
+                            logger.info("AI response received successfully")
+                            break
+                            
+                    except (asyncio.TimeoutError, TimedOut) as e:
+                        last_error = f"Response generation timeout (attempt {attempt + 1}/{max_retries})"
+                        logger.error(last_error)
+                        
+                    except NetworkError as e:
+                        last_error = f"Network error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                        logger.error(last_error)
+                        
+                    except Exception as e:
+                        last_error = f"Unexpected error (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                        logger.error(last_error)
+                    
+                    if attempt < max_retries - 1:
+                        # Exponential backoff with jitter
+                        delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+                        logger.info(f"Retrying in {delay:.2f} seconds...")
+                        await asyncio.sleep(delay)
+                    else:
+                        # Final attempt failed, send appropriate message
+                        error_message = (
+                            "I'm currently experiencing some technical difficulties. "
+                            "Please try again in a few moments."
+                        )
+                        if isinstance(last_error, (asyncio.TimeoutError, TimedOut)):
+                            error_message = (
+                                "I'm taking longer than expected to process your message. "
+                                "Please try again."
+                            )
+                        await update.message.reply_text(error_message)
+                        return
+                
+                if not response:
+                    return
                 
                 # Update message theme and sentiment
                 async with db_session() as db:
                     latest_message = db.query(Message).filter(
                         Message.user_id == user_id
-                    ).order_by(Message.timestamp.desc()).first()
+                    ).order_by(Message.created_at.desc()).first()
                     if latest_message:
                         latest_message.theme = theme
                         latest_message.sentiment_score = sentiment
                         db.commit()
 
-                save_message(user_id, response, False)
-                await update.message.reply_text(response)
+                # Enhanced message saving and sending with proper error handling
+                try:
+                    # Save the response message
+                    save_message(user_id, response, False)
+                    logger.info("Bot response saved to database")
+                except Exception as e:
+                    logger.error(f"Failed to save bot response: {str(e)}")
+                    # Continue with sending, but log the error
+                
+                # Improved message sending with retries
+                send_retries = 3
+                send_base_delay = 1
+                for send_attempt in range(send_retries):
+                    try:
+                        logger.info(f"Attempting to send response (attempt {send_attempt + 1}/{send_retries})")
+                        async with asyncio.timeout(10.0):
+                            sent_message = await update.message.reply_text(response)
+                            logger.info(f"Response successfully sent - Message ID: {sent_message.message_id}")
+                            break
+                            
+                    except (TimedOut, NetworkError) as e:
+                        logger.error(f"Network error sending message (attempt {send_attempt + 1}/{send_retries}): {str(e)}")
+                        if send_attempt == send_retries - 1:
+                            await update.message.reply_text(
+                                "I'm having trouble sending my response. Please wait a moment and try again."
+                            )
+                            return
+                            
+                    except TelegramError as e:
+                        logger.error(f"Telegram API error (attempt {send_attempt + 1}/{send_retries}): {str(e)}")
+                        if send_attempt == send_retries - 1:
+                            await update.message.reply_text(
+                                "I encountered an error while sending my response. Please try again."
+                            )
+                            return
+                            
+                    if send_attempt < send_retries - 1:
+                        delay = send_base_delay * (2 ** send_attempt)
+                        await asyncio.sleep(delay)
+            finally:
+                # Ensure typing indicator is canceled
+                typing_task.cancel()
+                try:
+                    await typing_task
+                except asyncio.CancelledError:
+                    pass
 
             # Notify about remaining messages
             if 0 < remaining <= 2:
@@ -292,6 +586,8 @@ class BotApplication:
             await update.message.reply_text(
                 "I apologize, but I encountered an error processing your message. Please try again."
             )
+        
+        logger.info("=== Message handling completed ===")
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"[Error] Bot error: {context.error}")
@@ -300,12 +596,94 @@ class BotApplication:
                 "I apologize, but I encountered an error. Please try again later."
             )
 
-    async def start(self):
-        """Start the bot"""
+    async def _health_check(self):
+        """Enhanced periodic health check to ensure bot responsiveness with proper recovery"""
+        consecutive_failures = 0
+        max_consecutive_failures = 3
+        base_check_interval = 60  # Start with 1 minute
+        max_check_interval = 300  # Max 5 minutes
+        
+        while True:
+            try:
+                # Comprehensive health check
+                me = await asyncio.wait_for(self.application.bot.get_me(), timeout=10.0)
+                if me and me.id:
+                    logger.info(f"Bot health check: OK (ID: {me.id})")
+                    consecutive_failures = 0  # Reset failure counter
+                    await asyncio.sleep(base_check_interval)  # Normal interval if healthy
+                    continue
+                
+                raise Exception("Invalid bot response")
+                
+            except asyncio.TimeoutError:
+                logger.error("Bot health check timeout")
+                consecutive_failures += 1
+            except Exception as e:
+                logger.error(f"Bot health check failed: {str(e)}")
+                consecutive_failures += 1
+            
+            # Progressive recovery based on failure count
+            if consecutive_failures >= max_consecutive_failures:
+                logger.critical(f"Critical: {consecutive_failures} consecutive health check failures")
+                try:
+                    logger.info("Attempting full bot recovery")
+                    await self.stop()
+                    await asyncio.sleep(5)  # Wait for cleanup
+                    self.__init__()
+                    await self.initialize()
+                    await self.application.start()
+                    logger.info("Bot recovered successfully")
+                    consecutive_failures = 0
+                except Exception as recovery_error:
+                    logger.error(f"Bot recovery failed: {str(recovery_error)}")
+                    # Implement exponential backoff for recovery attempts
+                    await asyncio.sleep(min(base_check_interval * (2 ** consecutive_failures), max_check_interval))
+            else:
+                # Implement exponential backoff for normal retries
+                retry_interval = min(base_check_interval * (2 ** consecutive_failures), max_check_interval)
+                logger.info(f"Waiting {retry_interval} seconds before next health check")
+                await asyncio.sleep(retry_interval)
+
+    async def initialize(self):
+        """Initialize bot handlers with enhanced error handling and connection management"""
         try:
-            await self.application.run_polling()
+            # Configure handlers with proper order and rate limiting
+            self.application.add_handler(CommandHandler("start", self.start_command, 
+                                                      block=False))
+            self.application.add_handler(CommandHandler("help", self.help_command,
+                                                      block=False))
+            self.application.add_handler(CommandHandler("subscribe", self.subscribe_command,
+                                                      block=False))
+            self.application.add_handler(CommandHandler("status", self.status_command,
+                                                      block=False))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,
+                                                      self.handle_message,
+                                                      block=False))
+            self.application.add_error_handler(self.error_handler)
+            
+            # Add rate limiting middleware
+            self.application.update_queue = asyncio.Queue(maxsize=100)  # Limit concurrent updates
+            
+            # Initialize the application
+            await self.application.initialize()
+            
+            # Start health check task
+            self._health_check_task = asyncio.create_task(self._health_check())
+            logger.info("Bot successfully initialized")
         except Exception as e:
-            print(f"[Error] Bot startup failed: {str(e)}")
+            logger.error(f"Bot initialization failed: {str(e)}")
+            raise
+
+    async def start(self):
+        """Start the bot with polling"""
+        try:
+            await self.application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                close_loop=False
+            )
+        except Exception as e:
+            logger.error(f"Bot startup failed: {str(e)}")
             raise
 
     async def stop(self):

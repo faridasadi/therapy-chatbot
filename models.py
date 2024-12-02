@@ -53,10 +53,16 @@ class Message(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, ForeignKey('user.id'))
     content = Column(Text)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     is_from_user = Column(Boolean)
+    role = Column(String(50), nullable=True)  # System, user, or assistant
     theme = Column(String(100), nullable=True)  # Store identified theme
     sentiment_score = Column(Float, nullable=True)  # Store message sentiment
+    
+    __table_args__ = (
+        Index('idx_message_user_time', user_id, created_at),
+        Index('idx_message_theme', theme),
+    )
     
     user = relationship("User", back_populates="messages")
 
