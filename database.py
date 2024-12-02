@@ -4,8 +4,8 @@ from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
 import os
 from datetime import datetime, timedelta
-from models import User, Message, UserTheme, Subscription
-from typing import Optional
+from models import User, Message, UserTheme, Subscription, MessageContext
+from typing import Optional, Tuple
 from config import FREE_MESSAGE_LIMIT, WEEKLY_FREE_MESSAGES
 
 # Create engine with connection pooling
@@ -127,6 +127,90 @@ def check_subscription_status(user_id: int) -> bool:
             db.rollback()
             raise
 
+def verify_user_deletion(db, user_id: int) -> Tuple[bool, str]:
+    """Verify that all user data has been properly deleted."""
+    try:
+        remaining_user = db.query(User).filter(User.id == user_id).first()
+        remaining_messages = db.query(Message).filter(Message.user_id == user_id).count()
+        remaining_themes = db.query(UserTheme).filter(UserTheme.user_id == user_id).count()
+        remaining_subscriptions = db.query(Subscription).filter(Subscription.user_id == user_id).count()
+
+        if any([remaining_user, remaining_messages, remaining_themes, remaining_subscriptions]):
+            error_msg = "Deletion verification failed. Remaining data: "
+            if remaining_user:
+                error_msg += "User record exists; "
+            if remaining_messages:
+                error_msg += f"{remaining_messages} messages; "
+            if remaining_themes:
+                error_msg += f"{remaining_themes} themes; "
+            if remaining_subscriptions:
+                error_msg += f"{remaining_subscriptions} subscriptions; "
+            return False, error_msg.strip("; ")
+        
+        return True, "All user data successfully deleted and verified"
+    except Exception as e:
+        return False, f"Error during deletion verification: {str(e)}"
+
+def delete_user_data(user_id: int, db) -> Tuple[bool, str]:
+    """Delete all data associated with a user with detailed verification."""
+    print(f"[Database] Starting data deletion for user ID: {user_id}")
+    
+    try:
+        # Verify user exists before deletion
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False, f"User with ID {user_id} not found"
+
+        # Get counts before deletion for verification
+        initial_messages = db.query(Message).filter(Message.user_id == user_id).count()
+        initial_themes = db.query(UserTheme).filter(UserTheme.user_id == user_id).count()
+        initial_subscriptions = db.query(Subscription).filter(Subscription.user_id == user_id).count()
+        
+        print(f"[Database] Found data to delete: {initial_messages} messages, {initial_themes} themes, {initial_subscriptions} subscriptions")
+
+        # Delete message contexts first (due to foreign key relationships)
+        message_ids = db.query(Message.id).filter(Message.user_id == user_id).all()
+        if message_ids:
+            message_id_list = [m.id for m in message_ids]
+            deleted_contexts = db.query(MessageContext).filter(
+                MessageContext.message_id.in_(message_id_list)
+            ).delete(synchronize_session=False)
+            print(f"[Database] Deleted {deleted_contexts} message contexts")
+        
+        # Delete messages
+        deleted_messages = db.query(Message).filter(Message.user_id == user_id).delete()
+        print(f"[Database] Deleted {deleted_messages} messages")
+        
+        # Delete subscription records
+        deleted_subscriptions = db.query(Subscription).filter(
+            Subscription.user_id == user_id
+        ).delete()
+        print(f"[Database] Deleted {deleted_subscriptions} subscription records")
+        
+        # Delete user themes
+        deleted_themes = db.query(UserTheme).filter(
+            UserTheme.user_id == user_id
+        ).delete()
+        print(f"[Database] Deleted {deleted_themes} user themes")
+        
+        # Finally delete the user
+        deleted_user = db.query(User).filter(User.id == user_id).delete()
+        print(f"[Database] Deleted user record: {deleted_user}")
+        
+        # Verify deletion
+        is_verified, verification_message = verify_user_deletion(db, user_id)
+        if not is_verified:
+            db.rollback()
+            return False, f"Deletion failed: {verification_message}"
+        
+        # If everything is successful, return True
+        print("[Database] Successfully deleted and verified all user data")
+        return True, "All user data successfully deleted and verified"
+        
+    except Exception as e:
+        error_message = f"Error deleting user data: {str(e)}"
+        print(f"[Database] {error_message}")
+        raise Exception(error_message)
 
 def clean_user_data(user_id: int) -> bool:
     """Clean up all user data and reset background information."""
@@ -211,42 +295,3 @@ def clean_expired_context():
             print(f"[Database] Error cleaning expired context: {str(e)}")
             db.rollback()
             return False
-
-
-def delete_user_data(user_id: int, db=None) -> bool:
-    """Delete all data associated with a user."""
-    print(f"[Database] Starting data deletion for user ID: {user_id}")
-    try:
-        # Delete message contexts first (due to foreign key relationships)
-        message_ids = db.query(Message.id).filter(Message.user_id == user_id).all()
-        if message_ids:
-            db.query(MessageContext).filter(
-                MessageContext.message_id.in_([m.id for m in message_ids])
-            ).delete(synchronize_session=False)
-        
-        # Delete messages
-        deleted_messages = db.query(Message).filter(Message.user_id == user_id).delete()
-        print(f"[Database] Deleted {deleted_messages} messages")
-        
-        # Delete subscription records
-        deleted_subscriptions = db.query(Subscription).filter(
-            Subscription.user_id == user_id
-        ).delete()
-        print(f"[Database] Deleted {deleted_subscriptions} subscription records")
-        
-        # Delete user themes
-        deleted_themes = db.query(UserTheme).filter(
-            UserTheme.user_id == user_id
-        ).delete()
-        print(f"[Database] Deleted {deleted_themes} user themes")
-        
-        # Finally delete the user
-        deleted_user = db.query(User).filter(User.id == user_id).delete()
-        print(f"[Database] Deleted user record: {deleted_user}")
-        
-        print(f"[Database] Successfully deleted all data for user ID: {user_id}")
-        return True
-        
-    except Exception as e:
-        print(f"[Database] Error deleting user data: {str(e)}")
-        raise
