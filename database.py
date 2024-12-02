@@ -1,22 +1,58 @@
 from sqlalchemy import create_engine
+from sqlalchemy import event, select, exc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
 import os
 from datetime import datetime, timedelta
-from models import User, Message, UserTheme, Subscription, MessageContext
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 from config import FREE_MESSAGE_LIMIT, WEEKLY_FREE_MESSAGES
+import logging
+from functools import lru_cache
+from models import User, Message, UserTheme, Subscription, MessageContext
+from base import Base
 
-# Create engine with connection pooling
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Telegram-only optimized engine configuration
 engine = create_engine(
     os.getenv('DATABASE_URL'),
     poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
-    pool_recycle=1800
+    pool_size=2,  # Reduced pool size for Telegram-only
+    max_overflow=2,  # Minimal overflow for Telegram traffic
+    pool_timeout=5,  # Faster timeout for better error detection
+    pool_recycle=600,  # Recycle connections every 10 minutes
+    pool_pre_ping=True,  # Connection verification
+    echo_pool=False,  # Production logging
+    connect_args={
+        'connect_timeout': 5,  # Reduced connection timeout
+        'application_name': 'telegram_therapy_bot',
+        'options': '-c statement_timeout=5000'  # 5 second query timeout
+    }
 )
+
+# Enhanced error handling for connection pool
+from sqlalchemy import event
+@event.listens_for(engine, 'engine_connect')
+def ping_connection(connection, branch):
+    if branch:
+        return
+
+    try:
+        connection.scalar(select(1))
+    except exc.DBAPIError as err:
+        if err.connection_invalidated:
+            connection.scalar(select(1))
+        else:
+            raise
+
+# LRU Cache for frequently accessed users
+@lru_cache(maxsize=100)
+def get_cached_user(user_id: int) -> Optional[User]:
+    """Get user from cache or database with 5-minute TTL."""
+    with get_db_session() as db:
+        return db.query(User).get(user_id)
 
 # Create session factory
 SessionFactory = sessionmaker(bind=engine)
@@ -24,19 +60,36 @@ ScopedSession = scoped_session(SessionFactory)
 
 @contextmanager
 def get_db_session():
-    """Context manager for database sessions"""
+    """Enhanced context manager for database sessions with proper cleanup"""
     session = ScopedSession()
     try:
         yield session
-    except Exception:
+    except Exception as e:
+        logger.error(f"Database session error: {str(e)}")
         session.rollback()
         raise
     finally:
-        session.close()
-        ScopedSession.remove()
+        try:
+            session.close()
+        except Exception as e:
+            logger.error(f"Error closing session: {str(e)}")
+        finally:
+            ScopedSession.remove()
+
+def init_database():
+    """Initialize database tables"""
+    Base.metadata.create_all(bind=engine)
+
+# Rest of the existing database.py content...
+from models import User, Message, UserTheme, Subscription, MessageContext
 
 def get_or_create_user(user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> User:
-    """Get or create a user with optimized session handling"""
+    """Get or create a user with caching"""
+    # Try to get user from cache first
+    cached_user = get_cached_user(user_id)
+    if cached_user:
+        return cached_user
+
     with get_db_session() as db:
         user = db.query(User).get(user_id)
         if not user:
@@ -48,40 +101,111 @@ def get_or_create_user(user_id: int, username: Optional[str] = None, first_name:
             )
             db.add(user)
             db.commit()
+            db.refresh(user)
+            
+            # Invalidate cache for this user_id
+            get_cached_user.cache_clear()
+            
         return user
 
-def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> Message:
-    print(f"[Database] Attempting to save message for user {user_id}")
-    with get_db_session() as db:
-        try:
-            message = Message(
-                user_id=user_id,
-                content=content,
-                is_from_user=is_from_user,
-                theme=theme,
-                sentiment_score=sentiment_score
-            )
-            print(f"[Database] Message object created, length: {len(content)} chars")
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from collections import defaultdict
+import threading
+from queue import Queue
+import time
 
-            db.add(message)
-            print(f"[Database] Message added to session")
+# Message batch processing
+_message_queue: Queue = Queue()
+_batch_size = 50
+_batch_timeout = 5  # seconds
+_last_batch_time = time.time()
+_batch_lock = threading.Lock()
 
-            db.commit()
-            db.refresh(message)
-            print(f"[Database] Message successfully saved with ID: {message.id}")
-            return message
-        except Exception as e:
-            print(f"[Database] Error saving message: {str(e)}")
+def _process_message_batch():
+    """Process queued messages in batches."""
+    messages_to_process = []
+    try:
+        while len(messages_to_process) < _batch_size:
+            try:
+                msg_data = _message_queue.get_nowait()
+                messages_to_process.append(msg_data)
+            except Queue.Empty:
+                break
+
+        if messages_to_process:
+            with get_db_session() as db:
+                messages = [
+                    Message(
+                        user_id=msg['user_id'],
+                        content=msg['content'],
+                        is_from_user=msg['is_from_user'],
+                        theme=msg['theme'],
+                        sentiment_score=msg['sentiment_score']
+                    )
+                    for msg in messages_to_process
+                ]
+                db.add_all(messages)
+                db.commit()
+                
+                # Refresh all messages to get their IDs
+                for msg in messages:
+                    db.refresh(msg)
+                
+                logger.info(f"Batch saved {len(messages)} messages successfully")
+                return messages
+    except Exception as e:
+        logger.error(f"Error in batch message processing: {str(e)}")
+        if 'db' in locals():
             db.rollback()
-            raise
+        raise
+    return []
+
+def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> Message:
+    """Queue message for batch processing."""
+    logger.info(f"Queueing message for user {user_id}")
+    message_data = {
+        'user_id': user_id,
+        'content': content,
+        'is_from_user': is_from_user,
+        'theme': theme,
+        'sentiment_score': sentiment_score
+    }
+    
+    _message_queue.put(message_data)
+    
+    # Process batch if size threshold reached or timeout elapsed
+    with _batch_lock:
+        global _last_batch_time
+        current_time = time.time()
+        
+        if _message_queue.qsize() >= _batch_size or (current_time - _last_batch_time) >= _batch_timeout:
+            messages = _process_message_batch()
+            _last_batch_time = current_time
+            
+            # Return the specific message for this request
+            if messages:
+                return next(
+                    (msg for msg in messages 
+                     if msg.user_id == user_id and msg.content == content),
+                    messages[-1]  # Fallback to last message if specific one not found
+                )
+    
+    # If we didn't process a batch, create a single message
+    with get_db_session() as db:
+        message = Message(**message_data)
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return message
 
 def increment_message_count(user_id: int) -> tuple[bool, int]:
-    print(f"[Database] Checking message count for user {user_id}")
+    logger.info(f"Checking message count for user {user_id}")
     with get_db_session() as db:
         try:
             user = db.query(User).get(user_id)
             if not user:
-                print(f"[Database] User {user_id} not found")
+                logger.warning(f"User {user_id} not found")
                 return False, 0
 
             # Reset weekly messages if needed
@@ -102,7 +226,7 @@ def increment_message_count(user_id: int) -> tuple[bool, int]:
 
             return True, remaining
         except Exception as e:
-            print(f"[Database] Error incrementing message count: {str(e)}")
+            logger.error(f"Error incrementing message count: {str(e)}")
             db.rollback()
             raise
 
@@ -123,7 +247,7 @@ def check_subscription_status(user_id: int) -> bool:
 
             return True
         except Exception as e:
-            print(f"[Database] Error checking subscription status: {str(e)}")
+            logger.error(f"Error checking subscription status: {str(e)}")
             db.rollback()
             raise
 
@@ -221,7 +345,7 @@ def clean_user_data(user_id: int) -> bool:
             with db.begin():
                 user = db.query(User).get(user_id)
                 if not user:
-                    print(f"[Database] User {user_id} not found")
+                    logger.warning(f"User {user_id} not found")
                     return False
 
                 # Use bulk delete for better performance

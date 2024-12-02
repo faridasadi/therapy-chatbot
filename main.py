@@ -1,20 +1,22 @@
 import asyncio
 import signal
-import uvicorn
+import logging
+from typing import Optional
 from bot_handlers import create_bot_application
 from re_engagement import run_re_engagement_system
 from context_manager import start_context_management
-from app import app
 
-async def run_api():
-    """Run the FastAPI application"""
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000)
-    server = uvicorn.Server(config)
-    await server.serve()
+# Configure logging with optimized format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 async def shutdown(signal_type, loop):
     """Handle graceful shutdown"""
-    print(f"Received exit signal {signal_type.name}...")
+    logger.info(f"Received exit signal {signal_type.name}...")
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     [task.cancel() for task in tasks]
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -22,51 +24,44 @@ async def shutdown(signal_type, loop):
 
 def handle_exception(loop, context):
     """Global exception handler"""
-    print(f"Error handling task: {context.get('exception', context['message'])}")
+    logger.error(f"Error handling task: {context.get('exception', context['message'])}")
     asyncio.create_task(shutdown(signal.SIGTERM, loop))
 
 async def main():
-    """Main application entry point"""
+    """Main application entry point for Telegram bot"""
     try:
-        print("Starting Therapyyy Bot Server...")
+        logger.info("Starting Telegram Therapy Bot...")
         
-        # Initialize components
-        print("Initializing Telegram bot...")
+        # Initialize Telegram bot with optimized retry logic
         bot_app = create_bot_application()
-        
-        # Initialize the application with retry logic
         retry_count = 3
+        
         while retry_count > 0:
             try:
-                print(f"Attempting to initialize bot (attempts remaining: {retry_count})")
-                await asyncio.wait_for(bot_app.application.initialize(), timeout=30.0)
+                logger.info(f"Initializing bot (attempts: {retry_count})")
+                await asyncio.wait_for(bot_app.application.initialize(), timeout=15.0)
                 await bot_app.application.start()
-                print("Bot successfully initialized and started")
+                logger.info("Bot initialization successful")
                 break
             except asyncio.TimeoutError:
                 retry_count -= 1
                 if retry_count > 0:
-                    print("Initialization timed out, retrying...")
-                    await asyncio.sleep(5)
+                    logger.warning("Timeout occurred, retrying...")
+                    await asyncio.sleep(3)
                 else:
-                    print("Failed to initialize bot after multiple attempts")
                     raise
             except Exception as e:
-                print(f"Error initializing bot: {str(e)}")
+                logger.error(f"Bot initialization failed: {str(e)}")
                 raise
         
-        # Create other tasks
-        tasks = [
-            asyncio.create_task(run_api()),
-            asyncio.create_task(run_re_engagement_system(bot_app.application.bot)),
-            asyncio.create_task(start_context_management())
-        ]
-        
-        # Run tasks concurrently
-        await asyncio.gather(*tasks)
+        # Run core bot tasks
+        await asyncio.gather(
+            run_re_engagement_system(bot_app.application.bot),
+            start_context_management()
+        )
             
     except Exception as e:
-        print(f"Fatal error in main loop: {e}")
+        logger.error(f"Critical error in main loop: {e}")
         raise
     finally:
         if 'bot_app' in locals():
@@ -74,7 +69,7 @@ async def main():
                 await bot_app.application.stop()
                 await bot_app.application.shutdown()
             except Exception as e:
-                print(f"Error during shutdown: {e}")
+                logger.error(f"Shutdown error: {e}")
 
 if __name__ == "__main__":
     try:
@@ -92,4 +87,4 @@ if __name__ == "__main__":
         # Run the application
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Shutting down gracefully...")
+        logger.info("Shutting down gracefully...")

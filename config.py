@@ -1,28 +1,25 @@
 import os
-
-# Database configuration
-POSTGRES_URI = os.environ.get("DATABASE_URL")
+from typing import Final
 
 # OpenAI configuration
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY: Final = os.environ.get("OPENAI_API_KEY")
 
 # Telegram configuration
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_PAYMENT_PROVIDER_TOKEN = os.environ.get("TELEGRAM_PAYMENT_TOKEN", "")
+TELEGRAM_TOKEN: Final = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
-# Subscription settings
-FREE_MESSAGE_LIMIT = 200
-SUBSCRIPTION_PRICE = 15.00
-WEEKLY_FREE_MESSAGES = 200
-SUBSCRIPTION_DESCRIPTION = "Monthly subscription to Therapyyy Bot - Unlimited access to AI therapy support"
-PAYMENT_CURRENCY = "USD"
+# Database configuration
+DATABASE_URL: Final = os.environ.get("DATABASE_URL")
 
-# Response templates
-WELCOME_MESSAGE = """👋🏻 Hey. What's on your mind today?"""
+# Message limits and quotas
+FREE_MESSAGE_LIMIT: Final = 200
+WEEKLY_FREE_MESSAGES: Final = 200
 
-SUBSCRIPTION_PROMPT = "To upgrade and have more messages, message to @faridasadi"
+# Bot response templates
+WELCOME_MESSAGE: Final = """👋🏻 Hey. What's on your mind today?"""
 
-HELP_MESSAGE = """Here's how I can help you:
+SUBSCRIPTION_PROMPT: Final = "To upgrade and have more messages, message to @faridasadi"
+
+HELP_MESSAGE: Final = """Here's how I can help you:
 - Chat with me about anything that's on your mind
 - Get support and guidance
 - Practice mindfulness together

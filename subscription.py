@@ -1,85 +1,8 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app import get_db_session
-from models import User, Subscription
-from config import (
-    SUBSCRIPTION_PRICE,
-    SUBSCRIPTION_DESCRIPTION,
-    PAYMENT_CURRENCY,
-    TELEGRAM_PAYMENT_PROVIDER_TOKEN
-)
-from telegram import LabeledPrice
-
-def generate_payment_invoice(user_id: int) -> dict:
-    """Generate payment invoice data for Telegram Payments."""
-    try:
-        return {
-            'title': 'Therapyyy Monthly Subscription',
-            'description': SUBSCRIPTION_DESCRIPTION,
-            'payload': f'sub_{user_id}_{datetime.utcnow().timestamp()}',
-            'provider_token': TELEGRAM_PAYMENT_PROVIDER_TOKEN,
-            'currency': PAYMENT_CURRENCY,
-            'prices': [LabeledPrice(label='Monthly Subscription', amount=int(SUBSCRIPTION_PRICE * 100))]
-        }
-    except Exception as e:
-        print(f"Error generating payment invoice: {e}")
-        return None
-
-def create_subscription(user_id: int, payment_id: str) -> bool:
-    db = get_db_session()
-    try:
-        user = db.query(User).get(user_id)
-        if not user:
-            return False
-            
-        subscription = Subscription(
-            user_id=user_id,
-            start_date=datetime.utcnow(),
-            end_date=datetime.utcnow() + timedelta(days=30),
-            payment_id=payment_id,
-            amount=SUBSCRIPTION_PRICE,
-            status='active'
-        )
-        
-        user.is_subscribed = True
-        user.subscription_end = subscription.end_date
-        
-        db.add(subscription)
-        db.commit()
-        return True
-        
-    except Exception:
-        db.rollback()
-        return False
-    finally:
-        db.close()
-
-def cancel_subscription(user_id: int) -> bool:
-    db = get_db_session()
-    try:
-        user = db.query(User).get(user_id)
-        if not user:
-            return False
-            
-        subscription = db.query(Subscription).filter_by(
-            user_id=user_id,
-            status='active'
-        ).first()
-        
-        if subscription:
-            subscription.status = 'cancelled'
-            user.is_subscribed = False
-            user.subscription_end = datetime.utcnow()
-            db.commit()
-            
-        return True
-        
-    except Exception:
-        db.rollback()
-        return False
-    finally:
-        db.close()
-
+from database import get_db_session
+from models import User, Message
+from config import FREE_MESSAGE_LIMIT, WEEKLY_FREE_MESSAGES
 
 def check_subscription_status(user_id: int) -> bool:
     """Check if user has an active subscription."""
@@ -88,7 +11,9 @@ def check_subscription_status(user_id: int) -> bool:
         user = db.query(User).get(user_id)
         if not user:
             return False
-        return user.is_subscribed and user.subscription_end > datetime.utcnow()
+        return user.is_subscribed and (
+            not user.subscription_end or user.subscription_end > datetime.utcnow()
+        )
     except Exception:
         return False
     finally:
@@ -112,7 +37,7 @@ def increment_message_count(user_id: int) -> tuple[bool, int]:
             return True, float('inf')
 
         # Check message limits
-        if user.messages_count >= 20 or user.weekly_messages_count >= 20:
+        if user.messages_count >= FREE_MESSAGE_LIMIT or user.weekly_messages_count >= WEEKLY_FREE_MESSAGES:
             return False, 0
 
         # Increment message counts
@@ -120,7 +45,10 @@ def increment_message_count(user_id: int) -> tuple[bool, int]:
         user.weekly_messages_count += 1
         db.commit()
 
-        remaining = min(20 - user.messages_count, 20 - user.weekly_messages_count)
+        remaining = min(
+            FREE_MESSAGE_LIMIT - user.messages_count,
+            WEEKLY_FREE_MESSAGES - user.weekly_messages_count
+        )
         return True, remaining
 
     except Exception:
@@ -129,14 +57,17 @@ def increment_message_count(user_id: int) -> tuple[bool, int]:
     finally:
         db.close()
 
-def save_message(user_id: int, content: str, is_from_user: bool) -> bool:
+def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> bool:
     """Save a message to the database."""
     db = get_db_session()
     try:
         message = Message(
             user_id=user_id,
             content=content,
-            is_from_user=is_from_user
+            is_from_user=is_from_user,
+            theme=theme,
+            sentiment_score=sentiment_score,
+            timestamp=datetime.utcnow()
         )
         db.add(message)
         db.commit()

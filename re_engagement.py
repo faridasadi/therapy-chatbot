@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, not_
 from sqlalchemy.orm import immediateload
-from db import get_db_session
+from database import get_db_session
 from models import User, Message, UserTheme, Subscription
 from config import WEEKLY_FREE_MESSAGES
 from telegram import Bot
@@ -13,13 +13,6 @@ import logging
 from time import time
 
 # Configure logging
-import os
-from logging.handlers import RotatingFileHandler
-
-# Ensure logs directory exists
-os.makedirs('static/logs', exist_ok=True)
-
-# Configure logging with both file and console handlers
 logger = logging.getLogger('re_engagement')
 logger.setLevel(logging.INFO)
 
@@ -31,20 +24,7 @@ console_format = logging.Formatter(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 console_handler.setFormatter(console_format)
-
-# File handler with rotation
-file_handler = RotatingFileHandler(
-    'static/logs/re_engagement.log',
-    maxBytes=1024*1024,  # 1MB
-    backupCount=5
-)
-file_handler.setLevel(logging.INFO)
-file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(file_format)
-
-# Add handlers to logger
 logger.addHandler(console_handler)
-logger.addHandler(file_handler)
 
 # Rate limiting configuration
 RATE_LIMIT = {
@@ -89,165 +69,178 @@ async def send_telegram_message(bot: Bot, user_id: int, message: str) -> bool:
 async def notify_weekly_reset(bot: Bot):
     """Notify users about their weekly message quota reset."""
     logger.info("Starting weekly reset notification process")
-    db = get_db_session()
-    try:
-        # Optimized query with proper indexing
-        users = (
-            db.query(User)
-            .filter(
-                and_(
-                    User.last_message_reset <= datetime.utcnow() - timedelta(days=7),
-                    User.is_subscribed == False,
-                    User.weekly_messages_count > 0
+    with get_db_session() as db:
+        try:
+            # Optimized query with proper indexing
+            users = (
+                db.query(User)
+                .filter(
+                    and_(
+                        User.last_message_reset <= datetime.utcnow() - timedelta(days=7),
+                        User.is_subscribed == False,
+                        User.weekly_messages_count > 0
+                    )
                 )
-            )
-            .with_for_update(skip_locked=True)
-            .all()
-        )
-        
-        logger.info(f"Found {len(users)} users eligible for weekly reset notification")
-        
-        success_count = 0
-        for user in users:
-            logger.info(f"Processing weekly reset for user {user.id}")
-            message = (
-                f"🎉 Good news! Your weekly message quota has been reset.\n"
-                f"You now have {WEEKLY_FREE_MESSAGES} free messages available this week.\n\n"
-                "Want unlimited access? Consider subscribing!"
+                .with_for_update(skip_locked=True)
+                .all()
             )
             
-            # Update reset timestamp before sending to prevent duplicate notifications
-            user.last_message_reset = datetime.utcnow()
-            user.weekly_messages_count = 0
-            db.commit()
+            logger.info(f"Found {len(users)} users eligible for weekly reset notification")
             
-            if await send_telegram_message(bot, user.id, message):
-                success_count += 1
+            success_count = 0
+            for user in users:
+                logger.info(f"Processing weekly reset for user {user.id}")
+                message = (
+                    f"🎉 Good news! Your weekly message quota has been reset.\n"
+                    f"You now have {WEEKLY_FREE_MESSAGES} free messages available this week.\n\n"
+                    "Want unlimited access? Consider subscribing!"
+                )
                 
-        logger.info(f"Weekly reset notifications completed. Success: {success_count}/{len(users)}")
-
-    except Exception as e:
-        logger.error(f"Error in notify_weekly_reset: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
+                # Update reset timestamp before sending to prevent duplicate notifications
+                user.last_message_reset = datetime.utcnow()
+                user.weekly_messages_count = 0
+                db.commit()
+                
+                if await send_telegram_message(bot, user.id, message):
+                    success_count += 1
+                    
+            logger.info(f"Weekly reset notifications completed. Success: {success_count}/{len(users)}")
+            
+        except Exception as e:
+            logger.error(f"Error in notify_weekly_reset: {str(e)}")
+            db.rollback()
+            raise
 
 async def re_engage_inactive_users(bot: Bot):
     """Send personalized re-engagement messages to inactive users."""
     logger.info("Starting inactive users re-engagement process")
-    db = get_db_session()
-    try:
-        three_days_ago = datetime.utcnow() - timedelta(days=3)
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        
-        # Optimized query using subquery to handle the locking correctly
-        latest_messages = (
-            db.query(
-                Message.user_id,
-                func.max(Message.timestamp).label('last_message')
-            )
-            .group_by(Message.user_id)
-            .subquery()
-        )
-        
-        inactive_users = (
-            db.query(User)
-            .join(latest_messages, User.id == latest_messages.c.user_id)
-            .filter(
-                latest_messages.c.last_message <= three_days_ago,
-                latest_messages.c.last_message > thirty_days_ago
-            )
-            .with_for_update(skip_locked=True)
-            .options(immediateload(User.themes))
-            .all()
-        )
+    with get_db_session() as db:
+        try:
+            three_days_ago = datetime.utcnow() - timedelta(days=3)
+            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
             
-        logger.info(f"Found {len(inactive_users)} inactive users to re-engage")
-        
-        success_count = 0
-        for user in inactive_users:
-            logger.info(f"Processing re-engagement for user {user.id}")
-            
-            # Optimized theme query with limit
-            themes = (
-                db.query(UserTheme)
-                .filter(UserTheme.user_id == user.id)
-                .order_by(UserTheme.frequency.desc())
-                .limit(2)
-                .all()
-            )
-
-            if not themes:
-                logger.info(f"No themes found for user {user.id}, skipping")
-                continue
-
-            theme_message = f"I noticed you've been interested in discussing {themes[0].theme}"
-            if len(themes) > 1:
-                theme_message += f" and {themes[1].theme}"
-            
-            message = (
-                f"👋 Hello! I've missed our conversations.\n\n"
-                f"{theme_message}. Would you like to continue our discussion?\n\n"
-                "I'm here whenever you're ready to talk."
+            # First get the latest message timestamps for each user
+            latest_messages = (
+                db.query(
+                    Message.user_id,
+                    func.max(Message.timestamp).label('last_message')
+                )
+                .group_by(Message.user_id)
+                .having(
+                    and_(
+                        func.max(Message.timestamp) <= three_days_ago,
+                        func.max(Message.timestamp) > thirty_days_ago
+                    )
+                )
+                .subquery()
             )
             
-            if await send_telegram_message(bot, user.id, message):
-                success_count += 1
+            # Then get the users with a separate FOR UPDATE query
+            inactive_user_ids = [row[0] for row in db.query(latest_messages.c.user_id).all()]
+            
+            if not inactive_user_ids:
+                logger.info("No inactive users found")
+                return
+            
+            # Get users with locking in batches
+            batch_size = 50
+            inactive_users = []
+            
+            for i in range(0, len(inactive_user_ids), batch_size):
+                batch_ids = inactive_user_ids[i:i + batch_size]
+                batch_users = (
+                    db.query(User)
+                    .filter(User.id.in_(batch_ids))
+                    .with_for_update(skip_locked=True)
+                    .options(immediateload(User.themes))
+                    .all()
+                )
+                inactive_users.extend(batch_users)
                 
-        logger.info(f"Inactive user re-engagement completed. Success: {success_count}/{len(inactive_users)}")
+            logger.info(f"Found {len(inactive_users)} inactive users to re-engage")
+            
+            success_count = 0
+            for user in inactive_users:
+                logger.info(f"Processing re-engagement for user {user.id}")
+                
+                # Optimized theme query with limit
+                themes = (
+                    db.query(UserTheme)
+                    .filter(UserTheme.user_id == user.id)
+                    .order_by(UserTheme.frequency.desc())
+                    .limit(2)
+                    .all()
+                )
 
-    except Exception as e:
-        logger.error(f"Error in re_engage_inactive_users: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
+                if not themes:
+                    logger.info(f"No themes found for user {user.id}, skipping")
+                    continue
+
+                theme_message = f"I noticed you've been interested in discussing {themes[0].theme}"
+                if len(themes) > 1:
+                    theme_message += f" and {themes[1].theme}"
+                
+                message = (
+                    f"👋 Hello! I've missed our conversations.\n\n"
+                    f"{theme_message}. Would you like to continue our discussion?\n\n"
+                    "I'm here whenever you're ready to talk."
+                )
+                
+                if await send_telegram_message(bot, user.id, message):
+                    success_count += 1
+                    
+            logger.info(f"Inactive user re-engagement completed. Success: {success_count}/{len(inactive_users)}")
+
+        except Exception as e:
+            logger.error(f"Error in re_engage_inactive_users: {str(e)}")
+            db.rollback()
+            raise
 
 async def subscription_reminders(bot: Bot):
     """Send subscription reminders to active free users."""
     logger.info("Starting subscription reminder process")
-    db = get_db_session()
-    try:
-        # Optimized query with proper filtering
-        active_users = (
-            db.query(User)
-            .filter(
-                and_(
-                    User.is_subscribed == False,
-                    User.messages_count >= 15,
-                    User.subscription_prompt_views < 5
+    with get_db_session() as db:
+        try:
+            # Optimized query with proper filtering
+            active_users = (
+                db.query(User)
+                .filter(
+                    and_(
+                        User.is_subscribed == False,
+                        User.messages_count >= 15,
+                        User.subscription_prompt_views < 5
+                    )
                 )
+                .with_for_update(skip_locked=True)
+                .all()
             )
-            .with_for_update(skip_locked=True)
-            .all()
-        )
-            
-        logger.info(f"Found {len(active_users)} users eligible for subscription reminders")
-        
-        success_count = 0
-        for user in active_users:
-            logger.info(f"Processing subscription reminder for user {user.id}")
-            message = (
-                "📊 I've noticed you're getting great value from our conversations!\n\n"
-                "Upgrade to unlimited access to:\n"
-                "✨ Chat anytime without limits\n"
-                "🎯 Get more personalized responses\n"
-                "💫 Continue your therapy journey without interruption\n\n"
-                "Ready to upgrade? Use /subscribe to get started!"
-            )
-            
-            user.subscription_prompt_views += 1
-            db.commit()
-            
-            if await send_telegram_message(bot, user.id, message):
-                success_count += 1
                 
-        logger.info(f"Subscription reminders completed. Success: {success_count}/{len(active_users)}")
+            logger.info(f"Found {len(active_users)} users eligible for subscription reminders")
+            
+            success_count = 0
+            for user in active_users:
+                logger.info(f"Processing subscription reminder for user {user.id}")
+                message = (
+                    "📊 I've noticed you're getting great value from our conversations!\n\n"
+                    "Upgrade to unlimited access to:\n"
+                    "✨ Chat anytime without limits\n"
+                    "🎯 Get more personalized responses\n"
+                    "💫 Continue your therapy journey without interruption\n\n"
+                    "Ready to upgrade? Use /subscribe to get started!"
+                )
+                
+                user.subscription_prompt_views += 1
+                db.commit()
+                
+                if await send_telegram_message(bot, user.id, message):
+                    success_count += 1
+                    
+            logger.info(f"Subscription reminders completed. Success: {success_count}/{len(active_users)}")
 
-    except Exception as e:
-        logger.error(f"Error in subscription_reminders: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
+        except Exception as e:
+            logger.error(f"Error in subscription_reminders: {str(e)}")
+            db.rollback()
+            raise
 
 async def run_re_engagement_system(bot: Bot):
     """Main function to run all re-engagement tasks."""

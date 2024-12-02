@@ -1,25 +1,11 @@
 [project]
 name = "repl-nix-therapyyybot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Telegram-based AI therapy chatbot"
 requires-python = ">=3.11"
 dependencies = [
-    "email-validator>=2.2.0",
-    "flask>=3.1.0",
-    "flask-sqlalchemy>=3.1.1",
     "openai>=1.55.3",
     "psycopg2-binary>=2.9.10",
-    "python-telegram-bot>=21.7",
-    "aiohttp>=3.11.8",
-    "hypercorn>=0.17.3",
-    "fastapi>=0.115.5",
-    "uvicorn>=0.32.1",
-    "python-multipart>=0.0.18",
-    "plotly>=5.24.1",
-    "jinja2>=3.1.4",
-    "aiofiles>=24.1.0",
-    "pandas>=2.2.3",
-    "asyncio",
-    "sqlalchemy",
-    "alembic>=1.14.0",
+    "python-telegram-bot[job-queue]>=21.7",
+    "sqlalchemy>=2.0.0"
 ]

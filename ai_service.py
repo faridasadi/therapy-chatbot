@@ -8,9 +8,14 @@ MODEL = "gpt-4"
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 from typing import Tuple, List, Dict
-from app import get_db_session
+from database import get_db_session, save_message
 from models import Message, UserTheme, User
 from datetime import datetime, timedelta
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
