@@ -10,30 +10,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def cleanup_expired_contexts():
-    """Remove expired message contexts periodically and decay relevance scores"""
+    """Remove expired message contexts periodically and decay relevance scores with optimized batch processing"""
+    BATCH_SIZE = 1000  # Process in smaller batches to manage memory
     while True:
         try:
             with get_db_session() as db:
-                # Delete expired contexts
-                expired = db.query(MessageContext).filter(
-                    MessageContext.expires_at <= datetime.utcnow()
-                ).delete(synchronize_session=False)
+                now = datetime.utcnow()
+                week_ago = now - timedelta(days=7)
                 
-                # Decay relevance scores for old contexts
-                old_contexts = db.query(MessageContext).filter(
-                    MessageContext.created_at <= datetime.utcnow() - timedelta(days=7),
-                    MessageContext.relevance_score > 0.2
-                ).all()
+                # Delete expired contexts in batches
+                while True:
+                    expired = db.query(MessageContext).filter(
+                        MessageContext.expires_at <= now
+                    ).limit(BATCH_SIZE).all()
+                    
+                    if not expired:
+                        break
+                        
+                    expired_ids = [c.id for c in expired]
+                    db.query(MessageContext).filter(
+                        MessageContext.id.in_(expired_ids)
+                    ).delete(synchronize_session=False)
+                    db.commit()
+                    logger.info(f"Cleaned up batch of {len(expired_ids)} expired contexts")
                 
-                for context in old_contexts:
-                    # Decay by 10% every week
-                    context.relevance_score = max(0.2, context.relevance_score * 0.9)
+                # Decay relevance scores in batches
+                processed = 0
+                while True:
+                    old_contexts = db.query(MessageContext).filter(
+                        MessageContext.created_at <= week_ago,
+                        MessageContext.relevance_score > 0.2
+                    ).limit(BATCH_SIZE).all()
+                    
+                    if not old_contexts:
+                        break
+                        
+                    for context in old_contexts:
+                        age_weeks = (now - context.created_at).days / 7
+                        # Apply exponential decay based on age
+                        decay_factor = 0.9 ** age_weeks
+                        context.relevance_score = max(0.2, context.relevance_score * decay_factor)
+                    
+                    processed += len(old_contexts)
+                    db.commit()
+                    logger.info(f"Updated relevance scores for {len(old_contexts)} contexts")
                 
-                db.commit()
-                logger.info(f"Cleaned up {expired} expired contexts and updated {len(old_contexts)} old contexts")
+                logger.info(f"Context maintenance completed. Processed {processed} old contexts")
                 
         except Exception as e:
             logger.error(f"Error in context maintenance: {str(e)}")
+            if 'db' in locals():
+                db.rollback()
         
         # Run maintenance every hour
         await asyncio.sleep(3600)
@@ -94,24 +121,38 @@ def update_context_relevance(message_id: int, context_type: str, value: str, bat
             logger.error(f"Error updating context relevance: {str(e)}")
             db.rollback()
 
-def get_relevant_context(message_id: int, limit: int = 5) -> List[Dict]:
-    """Get most relevant context for a message"""
+def get_relevant_context(message_id: int, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
+    """Get most relevant context for a message with optimized memory usage"""
     with get_db_session() as db:
-        contexts = db.query(MessageContext).filter(
-            MessageContext.message_id == message_id,
-            MessageContext.expires_at > datetime.utcnow()
-        ).order_by(
-            desc(MessageContext.relevance_score)
-        ).limit(limit).all()
-        
-        return [
-            {
-                'type': c.context_key,
-                'value': c.context_value,
-                'relevance': c.relevance_score
-            }
-            for c in contexts
-        ]
+        try:
+            # Join with Message table to get theme information
+            contexts = db.query(
+                MessageContext,
+                Message.theme
+            ).join(
+                Message,
+                MessageContext.message_id == Message.id
+            ).filter(
+                MessageContext.message_id == message_id,
+                MessageContext.expires_at > datetime.utcnow(),
+                MessageContext.relevance_score >= min_relevance
+            ).order_by(
+                desc(MessageContext.relevance_score)
+            ).limit(limit).all()
+            
+            return [
+                {
+                    'type': c.MessageContext.context_key,
+                    'value': c.MessageContext.context_value,
+                    'relevance': c.MessageContext.relevance_score,
+                    'theme': c.theme
+                }
+                for c in contexts
+            ] if contexts else []
+            
+        except Exception as e:
+            logger.error(f"Error retrieving context: {str(e)}")
+            return []
 
 # Add context cleanup task to main application
 async def start_context_management():

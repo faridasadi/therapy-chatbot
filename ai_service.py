@@ -38,30 +38,58 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         return 'general', 0.0
 
 
-def get_user_context(user_id: int, limit: int = 5) -> List[Dict]:
-    """Get recent conversation context for the user including themes and sentiments."""
+def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
+    """Get recent conversation context for the user including themes, sentiments, and relevant context."""
     with get_db_session() as db:
         try:
-            recent_messages = (db.query(Message).filter(
-                Message.user_id == user_id).order_by(
-                    Message.timestamp.desc()).limit(limit).all())
+            # Get recent messages within time window
+            cutoff_time = datetime.utcnow() - timedelta(hours=time_window)
+            recent_messages = (
+                db.query(Message)
+                .filter(
+                    Message.user_id == user_id,
+                    Message.timestamp >= cutoff_time
+                )
+                .order_by(Message.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
 
             context = []
+            theme_continuity = {}  # Track theme continuity
+
             for msg in reversed(recent_messages):
                 role = "user" if msg.is_from_user else "assistant"
                 message_data = {
                     "role": role,
-                    "content": msg.content
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat()
                 }
-                # Include theme and sentiment if available
-                if msg.theme and msg.sentiment_score is not None:
+
+                # Include theme and sentiment with continuity tracking
+                if msg.theme:
                     message_data["theme"] = msg.theme
+                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + 1
+                
+                if msg.sentiment_score is not None:
                     message_data["sentiment"] = msg.sentiment_score
+
+                # Get additional context from MessageContext
+                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.4)
+                if message_contexts:
+                    message_data["additional_context"] = message_contexts
+
                 context.append(message_data)
+
+            # Add theme continuity information
+            if context:
+                dominant_theme = max(theme_continuity.items(), key=lambda x: x[1])[0] if theme_continuity else None
+                context[0]["dominant_theme"] = dominant_theme
+
             return context
         except Exception as e:
-            print(f"Error getting user context: {str(e)}")
-            return []  # Return empty context on error to allow graceful degradation
+            logger.error(f"Error getting user context: {str(e)}")
+            return []  # Return empty context on error
 
 
 def update_user_themes(user_id: int, theme: str, sentiment: float):
