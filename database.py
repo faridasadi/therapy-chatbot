@@ -246,22 +246,15 @@ def clean_user_data(user_id: int) -> bool:
             print(f"[Database] Error cleaning up user data: {str(e)}")
             return False
 
-def get_message_context(user_id: int, limit: int = 10, context_window: int = 48) -> list[Message]:
+def get_message_context(user_id: int, limit: int = 5, context_window: int = 24) -> list[Message]:
     """Get recent message context for a user within the specified time window."""
     with get_db_session() as db:
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=context_window)
-            messages = db.query(Message).filter(
+            return db.query(Message).filter(
                 Message.user_id == user_id,
                 Message.timestamp >= cutoff_time
             ).order_by(Message.timestamp.desc()).limit(limit).all()
-            
-            # Verify message persistence
-            if messages:
-                print(f"[Database] Retrieved {len(messages)} messages for context")
-                for msg in messages:
-                    print(f"[Database] Message {msg.id}: theme={msg.theme}, sentiment={msg.sentiment_score}")
-            return messages
         except Exception as e:
             print(f"[Database] Error retrieving message context: {str(e)}")
             return []

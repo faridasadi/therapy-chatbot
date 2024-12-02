@@ -38,14 +38,58 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         return 'general', 0.0
 
 
-def get_user_context(user_id: int, limit: int = 5):
-    """Get recent conversation messages in a simple format for better context management."""
+def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
+    """Get recent conversation context for the user including themes, sentiments, and relevant context."""
     with get_db_session() as db:
-        messages = db.query(Message).filter(
-            Message.user_id == user_id
-        ).order_by(Message.timestamp.desc()).limit(limit).all()
-        return [{"role": "user" if msg.is_from_user else "assistant",
-                "content": msg.content} for msg in reversed(messages)]
+        try:
+            # Get recent messages within time window
+            cutoff_time = datetime.utcnow() - timedelta(hours=time_window)
+            recent_messages = (
+                db.query(Message)
+                .filter(
+                    Message.user_id == user_id,
+                    Message.timestamp >= cutoff_time
+                )
+                .order_by(Message.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
+
+            context = []
+            theme_continuity = {}  # Track theme continuity
+
+            for msg in reversed(recent_messages):
+                role = "user" if msg.is_from_user else "assistant"
+                message_data = {
+                    "role": role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat()
+                }
+
+                # Include theme and sentiment with continuity tracking
+                if msg.theme:
+                    message_data["theme"] = msg.theme
+                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + 1
+                
+                if msg.sentiment_score is not None:
+                    message_data["sentiment"] = msg.sentiment_score
+
+                # Get additional context from MessageContext
+                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.4)
+                if message_contexts:
+                    message_data["additional_context"] = message_contexts
+
+                context.append(message_data)
+
+            # Add theme continuity information
+            if context:
+                dominant_theme = max(theme_continuity.items(), key=lambda x: x[1])[0] if theme_continuity else None
+                context[0]["dominant_theme"] = dominant_theme
+
+            return context
+        except Exception as e:
+            logger.error(f"Error getting user context: {str(e)}")
+            return []  # Return empty context on error
 
 
 def update_user_themes(user_id: int, theme: str, sentiment: float):
@@ -88,35 +132,32 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
             
             interaction_style = user.interaction_style
 
-            # Build conversation context with error handling
-            try:
-                context = get_user_context(user_id)
-                if not context:
-                    print(f"[Warning] No context retrieved for user {user_id}")
-            except Exception as e:
-                print(f"[Error] Failed to retrieve context: {str(e)}")
-                context = []
+            # Build conversation context
+            context = get_user_context(user_id)
 
-            # Verify context formatting
-            for ctx in context:
-                if not isinstance(ctx, dict) or 'role' not in ctx or 'content' not in ctx:
-                    print(f"[Warning] Invalid context format detected: {ctx}")
-                    context.remove(ctx)
-
-            # Create focused system prompt with emphasis on memory and context
-            system_prompt = f"""You are Therapyyy, an empathetic AI therapy assistant.
-            IMPORTANT: You MUST remember and reference information from the conversation history.
-            For example:
-            - If user mentions their name, use it consistently
-            - Reference previous topics they've discussed
-            - Maintain continuity of any personal details shared
-
+            # Create personalized system prompt with theme awareness
+            system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
             Current conversation theme: {theme}
-            Your response style should be: {interaction_style}"""
+            User's preferred interaction style: {interaction_style}
+            
+            Your responses should be:
+            - Compassionate and understanding
+            - Non-judgmental
+            - Professional but warm
+            - Focused on emotional support
+            - Clear and concise
+            - Aligned with the user's interaction style: {interaction_style}
+            
+            Never provide medical advice or diagnoses. If someone needs immediate help,
+            direct them to professional emergency services."""
 
-            # Simplified message formatting
-            messages = [{"role": "system", "content": system_prompt}]
-            messages.extend(get_user_context(user_id))
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+            ]
+            messages.extend(context)
             messages.append({"role": "user", "content": message})
 
             response = client.chat.completions.create(
