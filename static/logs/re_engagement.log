@@ -557,3 +557,17 @@ WHERE message.timestamp <= %(timestamp_1)s AND message.timestamp > %(timestamp_2
 2024-12-02 12:38:27,994 - re_engagement - INFO - Starting weekly reset notification process
 2024-12-02 12:38:32,035 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-12-02 12:38:32,035 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-02 12:39:32,268 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-12-02 12:39:32,782 - re_engagement - ERROR - Error in re_engage_inactive_users: (psycopg2.errors.FeatureNotSupported) FOR UPDATE is not allowed with GROUP BY clause
+
+[SQL: SELECT "user".id AS user_id, "user".username AS user_username, "user".first_name AS user_first_name, "user".joined_at AS user_joined_at, "user".is_subscribed AS user_is_subscribed, "user".subscription_end AS user_subscription_end, "user".messages_count AS user_messages_count, "user".weekly_messages_count AS user_weekly_messages_count, "user".last_message_reset AS user_last_message_reset, "user".subscription_prompt_views AS user_subscription_prompt_views, "user".interaction_style AS user_interaction_style, "user".age AS user_age, "user".gender AS user_gender, "user".therapy_experience AS user_therapy_experience, "user".primary_concerns AS user_primary_concerns, "user".background_completed AS user_background_completed 
+FROM "user" JOIN (SELECT message.user_id AS user_id, max(message.timestamp) AS last_message 
+FROM message GROUP BY message.user_id) AS anon_1 ON "user".id = anon_1.user_id 
+WHERE anon_1.last_message <= %(last_message_1)s AND anon_1.last_message > %(last_message_2)s FOR UPDATE SKIP LOCKED]
+[parameters: {'last_message_1': datetime.datetime(2024, 11, 29, 12, 39, 32, 269360), 'last_message_2': datetime.datetime(2024, 11, 2, 12, 39, 32, 269368)}]
+(Background on this error at: https://sqlalche.me/e/20/tw8g)
+2024-12-02 12:40:33,015 - re_engagement - INFO - Starting subscription reminder process
+2024-12-02 12:40:33,484 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-12-02 12:40:33,485 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-12-02 12:40:33,716 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-12-02 12:40:33,717 - re_engagement - INFO - Waiting 6 hours before next cycle
