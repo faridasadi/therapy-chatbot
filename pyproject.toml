@@ -21,4 +21,5 @@ dependencies = [
     "pandas>=2.2.3",
     "asyncio",
     "sqlalchemy",
+    "alembic>=1.14.0",
 ]

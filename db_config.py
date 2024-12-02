@@ -6,17 +6,17 @@ import os
 # Create engine with optimized connection pooling and query timeout
 engine = create_engine(
     os.getenv('DATABASE_URL'),
-    pool_size=20,  # Optimized for concurrent handling
-    max_overflow=30,  # Allow more overflow connections
-    pool_timeout=60,  # Increased timeout for busy periods
-    pool_recycle=1200,  # Reduced recycle time to prevent stale connections
+    pool_size=10,  # Reduced pool size for better resource management
+    max_overflow=20,  # Balanced overflow connections
+    pool_timeout=30,  # Reduced timeout to fail fast
+    pool_recycle=300,  # More frequent connection recycling
     pool_pre_ping=True,  # Enable connection health checks
     echo_pool=True,  # Log pool events for monitoring
     connect_args={
-        'connect_timeout': 10,  # Connection timeout in seconds
-        'statement_timeout': 30000,  # Statement timeout in milliseconds (30 seconds)
-        'lock_timeout': 10000,  # Lock timeout in milliseconds (10 seconds)
-        'options': '-c synchronous_commit=off'  # Improve write performance
+        'connect_timeout': 5,  # Reduced connection timeout
+        'statement_timeout': 15000,  # Reduced statement timeout (15 seconds)
+        'lock_timeout': 5000,  # Reduced lock timeout (5 seconds)
+        'options': '-c synchronous_commit=off -c work_mem=64MB -c maintenance_work_mem=128MB'  # Performance optimizations
     }
 )
 

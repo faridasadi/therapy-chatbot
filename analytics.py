@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, text
+from sqlalchemy import func, and_, text, case
 from db import get_db_session
 from models import User, Message, UserTheme, Subscription
+from typing import Dict, Any
 from functools import lru_cache, wraps
 from typing import Dict, List, Any
 import time
@@ -44,20 +45,13 @@ def get_user_growth_data():
 
 @timed_lru_cache(seconds=300, maxsize=100)
 def get_message_activity_data():
-    """Get message activity data with efficient querying and caching."""
+    """Get message activity data using materialized view for better performance."""
     db = get_db_session()
     try:
-        # Use window function for better performance
         query = text("""
-            WITH daily_messages AS (
-                SELECT date_trunc('day', timestamp) as date,
-                       count(*) as count
-                FROM message
-                WHERE timestamp >= current_date - interval '30 days'
-                GROUP BY date_trunc('day', timestamp)
-            )
-            SELECT date, count
-            FROM daily_messages
+            SELECT date, message_count as count
+            FROM mv_daily_message_stats
+            WHERE date >= current_date - interval '30 days'
             ORDER BY date
         """)
         
@@ -71,26 +65,58 @@ def get_message_activity_data():
         db.close()
 
 @timed_lru_cache(seconds=60, maxsize=1)  # Cache for 1 minute
-def get_subscription_metrics():
-    """Get subscription-related metrics."""
+def get_subscription_metrics() -> Dict[str, Any]:
+    """Get subscription-related metrics with optimized querying."""
     db = get_db_session()
     try:
-        # Use a single query with multiple aggregations
-        metrics = db.query(
-            func.count(User.id).label('total_users'),
-            func.sum(case((User.is_subscribed == True, 1), else_=0)).label('subscribed_users'),
-            func.coalesce(
-                func.sum(case((Subscription.status == 'active', Subscription.amount), else_=0)),
-                0
-            ).label('total_revenue')
-        ).outerjoin(Subscription).first()
+        # Use materialized query with proper indexing
+        metrics_query = text("""
+            WITH user_metrics AS (
+                SELECT 
+                    COUNT(*) as total_users,
+                    SUM(CASE WHEN is_subscribed THEN 1 ELSE 0 END) as subscribed_users
+                FROM "user"
+            ),
+            revenue_metrics AS (
+                SELECT COALESCE(SUM(amount), 0) as total_revenue
+                FROM subscription
+                WHERE status = 'active'
+            )
+            SELECT 
+                um.total_users,
+                um.subscribed_users,
+                rm.total_revenue
+            FROM user_metrics um
+            CROSS JOIN revenue_metrics rm
+        """)
+        
+        result = db.execute(metrics_query).first()
+        
+        if not result:
+            return {
+                'total_users': 0,
+                'subscribed_users': 0,
+                'subscription_rate': 0,
+                'total_revenue': 0.0
+            }
+        
+        total_users = result.total_users or 0
+        subscribed_users = result.subscribed_users or 0
         
         return {
-            'total_users': metrics.total_users,
-            'subscribed_users': metrics.subscribed_users,
-            'subscription_rate': round((metrics.subscribed_users / metrics.total_users * 100) 
-                                    if metrics.total_users > 0 else 0, 2),
-            'total_revenue': round(float(metrics.total_revenue), 2)
+            'total_users': total_users,
+            'subscribed_users': subscribed_users,
+            'subscription_rate': round((subscribed_users / total_users * 100) 
+                                    if total_users > 0 else 0, 2),
+            'total_revenue': round(float(result.total_revenue), 2)
+        }
+    except Exception as e:
+        print(f"Error fetching subscription metrics: {e}")
+        return {
+            'total_users': 0,
+            'subscribed_users': 0,
+            'subscription_rate': 0,
+            'total_revenue': 0.0
         }
     finally:
         db.close()
@@ -126,20 +152,14 @@ def get_theme_distribution():
 
 @timed_lru_cache(seconds=300, maxsize=1)
 def get_sentiment_over_time():
-    """Get average sentiment scores over time."""
+    """Get average sentiment scores over time using materialized view."""
     db = get_db_session()
     try:
-        # Use window function for efficient sentiment calculation
         query = text("""
-            WITH daily_sentiment AS (
-                SELECT date_trunc('day', timestamp) as date,
-                       avg(sentiment_score) as average_sentiment
-                FROM message
-                WHERE sentiment_score IS NOT NULL
-                GROUP BY date_trunc('day', timestamp)
-            )
-            SELECT date, average_sentiment
-            FROM daily_sentiment
+            SELECT date, avg_sentiment as average_sentiment
+            FROM mv_daily_message_stats
+            WHERE date >= current_date - interval '30 days'
+                AND avg_sentiment IS NOT NULL
             ORDER BY date
         """)
         

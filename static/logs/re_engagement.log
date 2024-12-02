@@ -529,3 +529,31 @@ WHERE "user".last_message_reset <= %(last_message_reset_1)s AND "user".is_subscr
 2024-12-02 12:33:48,346 - re_engagement - INFO - Starting weekly reset notification process
 2024-12-02 12:33:52,381 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-12-02 12:33:52,381 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-02 12:34:52,618 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-12-02 12:34:53,095 - re_engagement - ERROR - Error in re_engage_inactive_users: (psycopg2.errors.FeatureNotSupported) FOR UPDATE is not allowed with GROUP BY clause
+
+[SQL: SELECT "user".id AS user_id, "user".username AS user_username, "user".first_name AS user_first_name, "user".joined_at AS user_joined_at, "user".is_subscribed AS user_is_subscribed, "user".subscription_end AS user_subscription_end, "user".messages_count AS user_messages_count, "user".weekly_messages_count AS user_weekly_messages_count, "user".last_message_reset AS user_last_message_reset, "user".subscription_prompt_views AS user_subscription_prompt_views, "user".interaction_style AS user_interaction_style, "user".age AS user_age, "user".gender AS user_gender, "user".therapy_experience AS user_therapy_experience, "user".primary_concerns AS user_primary_concerns, "user".background_completed AS user_background_completed 
+FROM "user" JOIN message ON "user".id = message.user_id 
+WHERE message.timestamp <= %(timestamp_1)s AND message.timestamp > %(timestamp_2)s GROUP BY "user".id FOR UPDATE SKIP LOCKED]
+[parameters: {'timestamp_1': datetime.datetime(2024, 11, 29, 12, 34, 52, 618684), 'timestamp_2': datetime.datetime(2024, 11, 2, 12, 34, 52, 618691)}]
+(Background on this error at: https://sqlalche.me/e/20/tw8g)
+2024-12-02 12:35:53,330 - re_engagement - INFO - Starting subscription reminder process
+2024-12-02 12:35:53,803 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-12-02 12:35:53,804 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-12-02 12:35:54,039 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-12-02 12:35:54,039 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-02 12:36:49,534 - re_engagement - INFO - Starting re-engagement system
+2024-12-02 12:36:49,535 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-02 12:36:49,536 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-02 12:36:53,461 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-02 12:36:53,461 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-02 12:37:44,618 - re_engagement - INFO - Starting re-engagement system
+2024-12-02 12:37:44,619 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-02 12:37:44,619 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-02 12:37:48,555 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-02 12:37:48,555 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-02 12:38:27,994 - re_engagement - INFO - Starting re-engagement system
+2024-12-02 12:38:27,994 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-02 12:38:27,994 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-02 12:38:32,035 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-02 12:38:32,035 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0

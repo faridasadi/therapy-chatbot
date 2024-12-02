@@ -6,6 +6,13 @@ from db_config import Base
 class User(Base):
     __tablename__ = 'user'
     
+    __table_args__ = (
+        Index('idx_user_subscription', 'is_subscribed'),
+        Index('idx_user_message_counts', 'messages_count', 'weekly_messages_count'),
+        Index('idx_user_last_reset', 'last_message_reset'),
+        Index('idx_user_interaction', 'interaction_style'),
+    )
+    
     id = Column(BigInteger, primary_key=True)  # Telegram user ID
     username = Column(String(64))
     first_name = Column(String(64))

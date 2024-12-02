@@ -140,15 +140,23 @@ async def re_engage_inactive_users(bot: Bot):
         three_days_ago = datetime.utcnow() - timedelta(days=3)
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         
-        # Optimized query with proper indexing and efficient joins
+        # Optimized query using subquery to handle the locking correctly
+        latest_messages = (
+            db.query(
+                Message.user_id,
+                func.max(Message.timestamp).label('last_message')
+            )
+            .group_by(Message.user_id)
+            .subquery()
+        )
+        
         inactive_users = (
             db.query(User)
-            .join(Message)
+            .join(latest_messages, User.id == latest_messages.c.user_id)
             .filter(
-                Message.timestamp <= three_days_ago,
-                Message.timestamp > thirty_days_ago
+                latest_messages.c.last_message <= three_days_ago,
+                latest_messages.c.last_message > thirty_days_ago
             )
-            .group_by(User.id)
             .with_for_update(skip_locked=True)
             .options(immediateload(User.themes))
             .all()
