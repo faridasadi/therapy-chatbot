@@ -37,9 +37,15 @@ def get_db_session():
 
 def get_or_create_user(user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> User:
     """Get or create a user with optimized session handling"""
+    print(f"[Database] Attempting to get or create user {user_id}")
     with get_db_session() as db:
-        user = db.query(User).get(user_id)
-        if not user:
+        try:
+            user = db.query(User).get(user_id)
+            if user:
+                print(f"[Database] Found existing user {user_id}")
+                return user
+            
+            print(f"[Database] Creating new user {user_id}")
             user = User(
                 id=user_id,
                 username=username,
@@ -48,7 +54,12 @@ def get_or_create_user(user_id: int, username: Optional[str] = None, first_name:
             )
             db.add(user)
             db.commit()
-        return user
+            print(f"[Database] Successfully created new user {user_id}")
+            return user
+        except Exception as e:
+            print(f"[Database] Error in get_or_create_user: {str(e)}")
+            db.rollback()
+            raise
 
 def save_message(user_id: int, content: str, is_from_user: bool, theme: str = None, sentiment_score: float = None) -> Message:
     print(f"[Database] Attempting to save message for user {user_id}")

@@ -252,45 +252,68 @@ class BotApplication:
                 return
 
             # Process regular message
+            print(f"[Debug] Message processing started for user {user_id}")
             print(f"[Received] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {message_text}")
-            save_message(user_id, message_text, True)
-            can_respond, remaining = increment_message_count(user_id)
 
-            if not can_respond:
-                async with db_session() as db:
-                    user = db.query(User).get(user_id)
-                    if user:
-                        user.subscription_prompt_views += 1
-                        db.commit()
-                await update.message.reply_text(SUBSCRIPTION_PROMPT)
-                return
-
-            # Get and send AI response with typing indicator
-            print(f"[Debug] Starting AI response generation for user {user_id}")
-            async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
-                print(f"[Debug] Calling get_therapy_response with message length: {len(message_text)}")
-                response, theme, sentiment = get_therapy_response(message_text, user_id)
-                print(f"[Debug] AI response generated. Theme: {theme}, Sentiment: {sentiment:.2f}")
+            # Save user message and check quota
+            try:
+                print(f"[Debug] Attempting to save message for user {user_id}")
+                saved = save_message(user_id, message_text, True)
+                print(f"[Debug] Message saved successfully: {bool(saved)}")
                 
-                # Update message theme and sentiment
-                async with db_session() as db:
-                    latest_message = db.query(Message).filter(
-                        Message.user_id == user_id
-                    ).order_by(Message.timestamp.desc()).first()
-                    if latest_message:
-                        latest_message.theme = theme
-                        latest_message.sentiment_score = sentiment
-                        db.commit()
+                print(f"[Debug] Checking message quota for user {user_id}")
+                can_respond, remaining = increment_message_count(user_id)
+                print(f"[Debug] Quota check result - Can respond: {can_respond}, Remaining: {remaining}")
 
-                save_message(user_id, response, False)
-                print(f"[Sent] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {response}")
-                await update.message.reply_text(response)
+                if not can_respond:
+                    print(f"[Debug] User {user_id} has reached message limit")
+                    async with db_session() as db:
+                        user = db.query(User).get(user_id)
+                        if user:
+                            user.subscription_prompt_views += 1
+                            db.commit()
+                            print(f"[Debug] Updated subscription prompt views for user {user_id}")
+                    await update.message.reply_text(SUBSCRIPTION_PROMPT)
+                    return
 
-            # Notify about remaining messages
-            if 0 < remaining <= 2:
+                # Get and send AI response with typing indicator
+                print(f"[Debug] Starting AI response generation for user {user_id}")
+                async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)):
+                    print(f"[Debug] Calling get_therapy_response with message length: {len(message_text)}")
+                    response, theme, sentiment = get_therapy_response(message_text, user_id)
+                    print(f"[Debug] AI response generated. Theme: {theme}, Sentiment: {sentiment:.2f}")
+                    
+                    # Update message theme and sentiment
+                    print(f"[Debug] Updating message theme and sentiment for user {user_id}")
+                    async with db_session() as db:
+                        latest_message = db.query(Message).filter(
+                            Message.user_id == user_id
+                        ).order_by(Message.timestamp.desc()).first()
+                        if latest_message:
+                            latest_message.theme = theme
+                            latest_message.sentiment_score = sentiment
+                            db.commit()
+                            print(f"[Debug] Successfully updated message metadata for user {user_id}")
+                        else:
+                            print(f"[Warning] Could not find latest message for user {user_id}")
+
+                    print(f"[Debug] Saving bot response for user {user_id}")
+                    save_message(user_id, response, False)
+                    print(f"[Sent] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {response}")
+                    await update.message.reply_text(response)
+
+                # Notify about remaining messages
+                if 0 < remaining <= 2:
+                    await update.message.reply_text(
+                        f"⚠️ Only {remaining} messages left! "
+                        "Upgrade now to unlock unlimited conversations!")
+
+            except Exception as e:
+                error_msg = f"[Error] Message processing failed: {str(e)}"
+                print(error_msg)
                 await update.message.reply_text(
-                    f"⚠️ Only {remaining} messages left! "
-                    "Upgrade now to unlock unlimited conversations!")
+                    "I apologize, but I encountered an error processing your message. Please try again."
+                )
 
         except Exception as e:
             print(f"[Error] Message handling failed: {str(e)}")
