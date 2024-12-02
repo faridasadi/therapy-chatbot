@@ -60,23 +60,38 @@ class BotApplication:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_user:
+            print("[Debug] Start command received but no effective user")
             return
 
         user_id = update.effective_user.id
+        print(f"[Debug] /start command received from user: {user_id}")
+        
         try:
             async with db_session() as db:
+                print(f"[Debug] Checking if user {user_id} exists in database")
                 user = db.query(User).get(user_id)
+                
                 if not user:
-                    user = User(
-                        id=user_id,
-                        username=update.effective_user.username,
-                        first_name=update.effective_user.first_name,
-                        joined_at=datetime.utcnow()
-                    )
-                    db.add(user)
-                    db.commit()
+                    print(f"[Debug] Creating new user {user_id}")
+                    try:
+                        user = User(
+                            id=user_id,
+                            username=update.effective_user.username,
+                            first_name=update.effective_user.first_name,
+                            joined_at=datetime.utcnow()
+                        )
+                        db.add(user)
+                        db.commit()
+                        print(f"[Debug] Successfully created new user {user_id}")
+                    except Exception as e:
+                        print(f"[Error] Failed to create new user {user_id}: {str(e)}")
+                        await update.message.reply_text("I encountered an error setting up your account. Please try /start again.")
+                        return
+                else:
+                    print(f"[Debug] Found existing user {user_id}")
                 
                 if not user.background_completed:
+                    print(f"[Debug] Starting background collection for user {user_id}")
                     welcome_text = (
                         f"{WELCOME_MESSAGE}\n\n"
                         "To provide you with the best possible support, I'd like to learn a bit about you. "
@@ -84,13 +99,17 @@ class BotApplication:
                         "What is your age? (Just enter a number)")
                     context.user_data['collecting_background'] = True
                     context.user_data['background_step'] = 'age'
+                    print(f"[Debug] Set background collection state for user {user_id}, step: age")
                 else:
+                    print(f"[Debug] User {user_id} already completed background information")
                     welcome_text = (
                         f"{WELCOME_MESSAGE}\n\n"
                         "Welcome back! I remember our previous conversations and I'm here to support you."
                     )
                 
                 await update.message.reply_text(welcome_text)
+                # Send test response
+                await update.message.reply_text("Test response - Please confirm you received this message")
                 
         except Exception as e:
             print(f"[Error] Start command failed: {str(e)}")
@@ -162,10 +181,18 @@ class BotApplication:
             )
 
     async def handle_background_collection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, message_text: str):
+        print(f"[Debug] Starting background collection for user {user_id}")
         async with db_session() as db:
             try:
+                print(f"[Debug] Fetching user {user_id} from database")
                 user = db.query(User).get(user_id)
+                if not user:
+                    print(f"[Error] User {user_id} not found in database during background collection")
+                    await update.message.reply_text("An error occurred. Please try /start again.")
+                    return
+                
                 current_step = context.user_data.get('background_step', 'age')
+                print(f"[Debug] Current background collection step for user {user_id}: {current_step}")
 
                 if current_step == 'age':
                     try:
