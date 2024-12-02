@@ -2,9 +2,29 @@ import os
 from openai import OpenAI
 from config import OPENAI_API_KEY
 
-# the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-# do not change this unless explicitly requested by the user
-MODEL = "gpt-4o-mini"
+# Initialize logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Use GPT-3.5-turbo as the default model
+MODEL = "gpt-3.5-turbo"
+
+# Verify if user has access to GPT-4
+def get_appropriate_model():
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=1
+        )
+        logger.info("GPT-4 access confirmed, using GPT-4")
+        return "gpt-4"
+    except Exception as e:
+        logger.info("Using GPT-3.5-turbo as default model")
+        return "gpt-3.5-turbo"
+
+MODEL = get_appropriate_model()
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 

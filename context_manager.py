@@ -156,36 +156,73 @@ def update_context_relevance(message_id: int, context_type: str, value: str, bat
             db.rollback()
 
 def get_relevant_context(message_id: int, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
-    """Get most relevant context for a message with optimized memory usage"""
+    """Get most relevant context for a message with enhanced history retrieval and error handling"""
     with get_db_session() as db:
         try:
-            # Join with Message table to get theme information
+            # Get the message to find its timestamp and user_id
+            message = db.query(Message).get(message_id)
+            if not message:
+                logger.error(f"Message {message_id} not found")
+                return []
+
+            # Get recent conversation history
+            recent_messages = db.query(Message).filter(
+                Message.user_id == message.user_id,
+                Message.timestamp <= message.timestamp,
+                Message.id != message_id
+            ).order_by(
+                desc(Message.timestamp)
+            ).limit(5).all()
+
+            # Get contexts for the current message and recent messages
+            message_ids = [m.id for m in recent_messages] + [message_id]
+            
             contexts = db.query(
                 MessageContext,
-                Message.theme
+                Message.theme,
+                Message.timestamp,
+                Message.sentiment_score
             ).join(
                 Message,
                 MessageContext.message_id == Message.id
             ).filter(
-                MessageContext.message_id == message_id,
+                MessageContext.message_id.in_(message_ids),
                 MessageContext.expires_at > datetime.utcnow(),
                 MessageContext.relevance_score >= min_relevance
             ).order_by(
+                desc(Message.timestamp),
                 desc(MessageContext.relevance_score)
-            ).limit(limit).all()
-            
-            return [
-                {
+            ).limit(limit * 2).all()  # Get more contexts initially for better filtering
+
+            # Enhanced context processing with relevance boosting
+            processed_contexts = []
+            for c in contexts:
+                context_data = {
                     'type': c.MessageContext.context_key,
                     'value': c.MessageContext.context_value,
                     'relevance': c.MessageContext.relevance_score,
-                    'theme': c.theme
+                    'theme': c.theme,
+                    'timestamp': c.timestamp.isoformat()
                 }
-                for c in contexts
-            ] if contexts else []
-            
+
+                # Boost relevance for thematic consistency
+                if message.theme == c.theme:
+                    context_data['relevance'] *= 1.2
+
+                # Boost relevance for emotional consistency
+                if message.sentiment_score is not None and c.sentiment_score is not None:
+                    sentiment_diff = abs(message.sentiment_score - c.sentiment_score)
+                    if sentiment_diff < 0.3:
+                        context_data['relevance'] *= 1.1
+
+                processed_contexts.append(context_data)
+
+            # Sort by boosted relevance and return top contexts
+            processed_contexts.sort(key=lambda x: x['relevance'], reverse=True)
+            return processed_contexts[:limit]
+
         except Exception as e:
-            logger.error(f"Error retrieving context: {str(e)}")
+            logger.error(f"Error retrieving context: {str(e)}", exc_info=True)
             return []
 
 # Add context cleanup task to main application
