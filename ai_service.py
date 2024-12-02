@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI client configuration
-MODEL = "gpt-4"  # Using stable GPT-4 model as recommended
+MODEL = "gpt-4"  # Using GPT-4 model as it's more stable than gpt-4o
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
