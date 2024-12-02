@@ -39,10 +39,10 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
 
 
 def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
-    """Get recent conversation context for the user including themes, sentiments, and relevant context."""
+    """Get recent conversation context for the user including themes, sentiments, and relevant context with improved continuity."""
     with get_db_session() as db:
         try:
-            # Get recent messages within time window
+            # Get recent messages within time window with improved ordering
             cutoff_time = datetime.utcnow() - timedelta(hours=time_window)
             recent_messages = (
                 db.query(Message)
@@ -50,41 +50,75 @@ def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> Lis
                     Message.user_id == user_id,
                     Message.timestamp >= cutoff_time
                 )
-                .order_by(Message.timestamp.desc())
-                .limit(limit)
+                .order_by(
+                    Message.timestamp.desc(),
+                    Message.sentiment_score.desc()  # Prioritize emotionally significant messages
+                )
+                .limit(limit * 2)  # Get more messages initially for better context selection
                 .all()
             )
 
             context = []
             theme_continuity = {}  # Track theme continuity
-
-            for msg in reversed(recent_messages):
+            sentiment_flow = []  # Track emotional flow
+            
+            # Pre-process messages for context relevance
+            processed_messages = []
+            for msg in recent_messages:
+                relevance_score = 1.0
+                time_decay = (datetime.utcnow() - msg.timestamp).total_seconds() / (time_window * 3600)
+                relevance_score *= max(0.2, 1 - time_decay)  # Time-based decay
+                
+                # Boost relevance for messages with strong sentiment
+                if msg.sentiment_score is not None:
+                    sentiment_impact = abs(msg.sentiment_score) * 0.3
+                    relevance_score += sentiment_impact
+                
+                processed_messages.append((msg, relevance_score))
+            
+            # Sort by relevance and take top messages
+            processed_messages.sort(key=lambda x: x[1], reverse=True)
+            selected_messages = processed_messages[:limit]
+            
+            # Build context with improved continuity
+            for msg, relevance in sorted(selected_messages, key=lambda x: x[0].timestamp):
                 role = "user" if msg.is_from_user else "assistant"
                 message_data = {
                     "role": role,
                     "content": msg.content,
-                    "timestamp": msg.timestamp.isoformat()
+                    "timestamp": msg.timestamp.isoformat(),
+                    "relevance": relevance
                 }
 
-                # Include theme and sentiment with continuity tracking
+                # Enhanced theme tracking
                 if msg.theme:
                     message_data["theme"] = msg.theme
-                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + 1
+                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + (1 * relevance)  # Weight by relevance
                 
                 if msg.sentiment_score is not None:
                     message_data["sentiment"] = msg.sentiment_score
+                    sentiment_flow.append(msg.sentiment_score)
 
-                # Get additional context from MessageContext
-                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.4)
+                # Get additional context with improved relevance threshold
+                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.5)
                 if message_contexts:
                     message_data["additional_context"] = message_contexts
 
                 context.append(message_data)
 
-            # Add theme continuity information
+            # Enhanced context metadata
             if context:
+                # Calculate dominant theme with relevance weighting
                 dominant_theme = max(theme_continuity.items(), key=lambda x: x[1])[0] if theme_continuity else None
                 context[0]["dominant_theme"] = dominant_theme
+                
+                # Add emotional flow analysis
+                if sentiment_flow:
+                    context[0]["emotional_trend"] = {
+                        "start": sentiment_flow[0] if sentiment_flow else 0,
+                        "end": sentiment_flow[-1] if sentiment_flow else 0,
+                        "variance": sum(abs(s - sum(sentiment_flow)/len(sentiment_flow)) for s in sentiment_flow) / len(sentiment_flow) if sentiment_flow else 0
+                    }
 
             return context
         except Exception as e:

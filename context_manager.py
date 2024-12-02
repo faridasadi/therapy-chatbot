@@ -66,7 +66,7 @@ async def cleanup_expired_contexts():
         await asyncio.sleep(3600)
 
 def update_context_relevance(message_id: int, context_type: str, value: str, batch_size: int = 100) -> None:
-    """Update context relevance scores based on usage patterns with batch processing"""
+    """Update context relevance scores with improved continuity and semantic relevance"""
     with get_db_session() as db:
         try:
             # Get existing context
@@ -76,44 +76,78 @@ def update_context_relevance(message_id: int, context_type: str, value: str, bat
             ).first()
             
             if not context:
+                # Initialize with dynamic expiry based on context type
+                expiry_days = {
+                    'theme': 60,
+                    'emotion': 45,
+                    'topic': 30,
+                    'reference': 15
+                }.get(context_type.lower(), 30)
+                
                 context = MessageContext(
                     message_id=message_id,
                     context_key=context_type,
                     context_value=value,
-                    relevance_score=0.5,  # Initial middle score
-                    expires_at=datetime.utcnow() + timedelta(days=30)  # Default 30 day expiry
+                    relevance_score=0.6,  # Start with slightly higher initial score
+                    expires_at=datetime.utcnow() + timedelta(days=expiry_days)
                 )
                 db.add(context)
             
-            # Update relevance based on message sentiment and theme consistency
+            # Get message and its metadata
             message = db.query(Message).get(message_id)
             if message:
-                # Find similar contexts efficiently using indices
-                similar_contexts = db.query(MessageContext).join(Message).filter(
+                # Enhanced context similarity search
+                similar_contexts = db.query(MessageContext, Message).join(Message).filter(
                     Message.theme == message.theme,
                     MessageContext.context_key == context_type,
                     MessageContext.context_value == value,
-                    MessageContext.relevance_score > 0.3  # Filter low relevance contexts
+                    MessageContext.relevance_score > 0.4,  # Increased minimum relevance threshold
+                    Message.timestamp >= datetime.utcnow() - timedelta(days=30)  # Recent messages only
                 ).order_by(
-                    desc(MessageContext.relevance_score)
+                    desc(MessageContext.relevance_score),
+                    desc(Message.timestamp)
                 ).limit(batch_size).all()
                 
                 if similar_contexts:
-                    # Calculate weighted average based on recency
+                    # Enhanced weighted scoring system
                     total_weight = 0
                     weighted_sum = 0
                     now = datetime.utcnow()
                     
-                    for c in similar_contexts:
-                        age = (now - c.created_at).days + 1
-                        weight = 1.0 / age  # More recent contexts have higher weight
+                    for context_msg_pair in similar_contexts:
+                        c, msg = context_msg_pair
+                        # Calculate multi-factor weight
+                        age_weight = 1.0 / ((now - c.created_at).days + 1)  # Time decay
+                        
+                        # Theme consistency bonus
+                        theme_bonus = 1.2 if msg.theme == message.theme else 1.0
+                        
+                        # Sentiment alignment bonus
+                        sentiment_bonus = 1.0
+                        if msg.sentiment_score is not None and message.sentiment_score is not None:
+                            sentiment_diff = abs(msg.sentiment_score - message.sentiment_score)
+                            sentiment_bonus = 1.2 if sentiment_diff < 0.3 else 1.0
+                        
+                        # Combined weight
+                        weight = age_weight * theme_bonus * sentiment_bonus
+                        
                         weighted_sum += c.relevance_score * weight
                         total_weight += weight
                     
                     if total_weight > 0:
                         weighted_avg = weighted_sum / total_weight
-                        # Smooth update with momentum
-                        context.relevance_score = (0.7 * context.relevance_score) + (0.3 * weighted_avg)
+                        # Adaptive momentum based on context age
+                        age_factor = min(1.0, (now - context.created_at).days / 30)
+                        momentum = 0.8 - (0.3 * age_factor)  # Reduce momentum for older contexts
+                        context.relevance_score = (momentum * context.relevance_score) + ((1 - momentum) * weighted_avg)
+                        
+                        # Boost score for highly consistent contexts
+                        if len(similar_contexts) >= 3 and weighted_avg > 0.8:
+                            context.relevance_score = min(1.0, context.relevance_score * 1.1)
+                
+                # Update expiry based on relevance
+                if context.relevance_score > 0.8:
+                    context.expires_at = max(context.expires_at, datetime.utcnow() + timedelta(days=60))
                 
             db.commit()
             
