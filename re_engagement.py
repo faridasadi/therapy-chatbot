@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, and_, not_
+from sqlalchemy.orm import immediateload
 from db import get_db_session
 from models import User, Message, UserTheme, Subscription
 from config import WEEKLY_FREE_MESSAGES
@@ -90,22 +91,21 @@ async def notify_weekly_reset(bot: Bot):
     logger.info("Starting weekly reset notification process")
     db = get_db_session()
     try:
-        # Find users whose weekly messages were reset
-        query = db.query(User).filter(
-            User.last_message_reset <= datetime.utcnow() - timedelta(days=7),
-            User.is_subscribed == False,
-            User.weekly_messages_count > 0  # Only notify users who have used messages
+        # Optimized query with proper indexing
+        users = (
+            db.query(User)
+            .filter(
+                and_(
+                    User.last_message_reset <= datetime.utcnow() - timedelta(days=7),
+                    User.is_subscribed == False,
+                    User.weekly_messages_count > 0
+                )
+            )
+            .with_for_update(skip_locked=True)
+            .all()
         )
         
-        # Log the SQL query for debugging
-        logger.debug(f"Weekly reset query: {query.statement}")
-        
-        try:
-            users = query.all()
-            logger.info(f"Found {len(users)} users eligible for weekly reset notification")
-        except Exception as db_error:
-            logger.error(f"Database error in notify_weekly_reset: {str(db_error)}")
-            raise
+        logger.info(f"Found {len(users)} users eligible for weekly reset notification")
         
         success_count = 0
         for user in users:
@@ -137,32 +137,42 @@ async def re_engage_inactive_users(bot: Bot):
     logger.info("Starting inactive users re-engagement process")
     db = get_db_session()
     try:
-        # Find users inactive for more than 3 days but less than 30 days
-        inactive_users = db.query(User).join(Message)\
+        three_days_ago = datetime.utcnow() - timedelta(days=3)
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        
+        # Optimized query with proper indexing and efficient joins
+        inactive_users = (
+            db.query(User)
+            .join(Message)
             .filter(
-                Message.timestamp <= datetime.utcnow() - timedelta(days=3),
-                Message.timestamp > datetime.utcnow() - timedelta(days=30)
-            )\
-            .group_by(User.id)\
+                Message.timestamp <= three_days_ago,
+                Message.timestamp > thirty_days_ago
+            )
+            .group_by(User.id)
+            .with_for_update(skip_locked=True)
+            .options(immediateload(User.themes))
             .all()
+        )
             
         logger.info(f"Found {len(inactive_users)} inactive users to re-engage")
         
         success_count = 0
         for user in inactive_users:
             logger.info(f"Processing re-engagement for user {user.id}")
-            # Get user's most discussed themes and average sentiment
-            themes = db.query(UserTheme)\
-                .filter(UserTheme.user_id == user.id)\
-                .order_by(UserTheme.frequency.desc())\
-                .limit(2)\
+            
+            # Optimized theme query with limit
+            themes = (
+                db.query(UserTheme)
+                .filter(UserTheme.user_id == user.id)
+                .order_by(UserTheme.frequency.desc())
+                .limit(2)
                 .all()
+            )
 
             if not themes:
                 logger.info(f"No themes found for user {user.id}, skipping")
                 continue
 
-            # Personalize message based on user themes and sentiment
             theme_message = f"I noticed you've been interested in discussing {themes[0].theme}"
             if len(themes) > 1:
                 theme_message += f" and {themes[1].theme}"
@@ -189,20 +199,25 @@ async def subscription_reminders(bot: Bot):
     logger.info("Starting subscription reminder process")
     db = get_db_session()
     try:
-        # Find active free users with high message counts
-        active_users = db.query(User)\
+        # Optimized query with proper filtering
+        active_users = (
+            db.query(User)
             .filter(
-                User.is_subscribed == False,
-                User.messages_count >= 15,
-                User.subscription_prompt_views < 5  # Limit reminder frequency
-            ).all()
+                and_(
+                    User.is_subscribed == False,
+                    User.messages_count >= 15,
+                    User.subscription_prompt_views < 5
+                )
+            )
+            .with_for_update(skip_locked=True)
+            .all()
+        )
             
         logger.info(f"Found {len(active_users)} users eligible for subscription reminders")
         
         success_count = 0
         for user in active_users:
             logger.info(f"Processing subscription reminder for user {user.id}")
-            # Personalize subscription message based on usage
             message = (
                 "📊 I've noticed you're getting great value from our conversations!\n\n"
                 "Upgrade to unlimited access to:\n"
@@ -234,7 +249,7 @@ async def run_re_engagement_system(bot: Bot):
         try:
             logger.info("Beginning re-engagement cycle")
             
-            # Execute re-engagement tasks
+            # Execute re-engagement tasks with proper delays
             await notify_weekly_reset(bot)
             await asyncio.sleep(60)  # Rate limiting between tasks
             
