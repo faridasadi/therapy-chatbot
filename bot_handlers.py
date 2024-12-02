@@ -59,71 +59,42 @@ class BotApplication:
 - Weekly free messages remaining: {weekly_remaining}"""
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle the /start command with enhanced logging and error handling."""
-        logger.info("Start command received")
-
         if not update.effective_user:
-            logger.error("No effective user found in update")
             return
 
         user_id = update.effective_user.id
-        logger.info(f"Processing start command for user_id: {user_id}, "
-                   f"username: {update.effective_user.username}, "
-                   f"first_name: {update.effective_user.first_name}")
-
         try:
             async with db_session() as db:
-                logger.info(f"Attempting to fetch/create user {user_id} from database")
-                try:
-                    user = db.query(User).get(user_id)
-                    if not user:
-                        logger.info(f"Creating new user record for user_id: {user_id}")
-                        user = User(
-                            id=user_id,
-                            username=update.effective_user.username,
-                            first_name=update.effective_user.first_name,
-                            joined_at=datetime.utcnow()
-                        )
-                        db.add(user)
-                        db.commit()
-                        logger.info(f"Successfully created new user: {user_id}")
-                    else:
-                        logger.info(f"Found existing user: {user_id}, background_completed: {user.background_completed}")
-                
-                    if not user.background_completed:
-                        logger.info(f"Initiating background collection for user: {user_id}")
-                        welcome_text = (
-                            f"{WELCOME_MESSAGE}\n\n"
-                            "To provide you with the best possible support, I'd like to learn a bit about you. "
-                            "Please answer a few quick questions:\n\n"
-                            "What is your age? (Just enter a number)")
-                        context.user_data['collecting_background'] = True
-                        context.user_data['background_step'] = 'age'
-                    else:
-                        logger.info(f"Welcoming returning user: {user_id}")
-                        welcome_text = (
-                            f"{WELCOME_MESSAGE}\n\n"
-                            "Welcome back! I remember our previous conversations and I'm here to support you."
-                        )
-                    
-                    logger.info(f"Sending welcome message to user: {user_id}")
-                    await update.message.reply_text(welcome_text)
-                    logger.info(f"Successfully completed start command for user: {user_id}")
-
-                except Exception as db_error:
-                    logger.error(f"Database operation failed: {str(db_error)}", exc_info=True)
-                    await update.message.reply_text(
-                        "I'm having trouble accessing your information. Please try /start again in a few moments."
+                user = db.query(User).get(user_id)
+                if not user:
+                    user = User(
+                        id=user_id,
+                        username=update.effective_user.username,
+                        first_name=update.effective_user.first_name,
+                        joined_at=datetime.utcnow()
                     )
-                    raise
-
+                    db.add(user)
+                    db.commit()
+                
+                if not user.background_completed:
+                    welcome_text = (
+                        f"{WELCOME_MESSAGE}\n\n"
+                        "To provide you with the best possible support, I'd like to learn a bit about you. "
+                        "Please answer a few quick questions:\n\n"
+                        "What is your age? (Just enter a number)")
+                    context.user_data['collecting_background'] = True
+                    context.user_data['background_step'] = 'age'
+                else:
+                    welcome_text = (
+                        f"{WELCOME_MESSAGE}\n\n"
+                        "Welcome back! I remember our previous conversations and I'm here to support you."
+                    )
+                
+                await update.message.reply_text(welcome_text)
+                
         except Exception as e:
-            error_msg = f"Start command failed for user {user_id}: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            await update.message.reply_text(
-                "I apologize, but I encountered an unexpected issue. "
-                "Please try /start again. If the problem persists, contact support."
-            )
+            print(f"[Error] Start command failed: {str(e)}")
+            await update.message.reply_text("I apologize, but I encountered a temporary issue. Please try /start again.")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
