@@ -129,6 +129,38 @@ class BotApplication:
             print(f"[Error] Status command failed: {str(e)}")
             await update.message.reply_text("An error occurred. Please try again.")
 
+    async def clearnow_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Hidden command to delete all user data"""
+        if not update.effective_user:
+            return
+
+        user_id = update.effective_user.id
+        print("[Debug] Clearnow command received from user:", user_id)
+        try:
+            await update.message.reply_text("🔄 Processing your data deletion request...")
+            
+            # Delete all user data
+            from database import delete_user_data
+            success = delete_user_data(user_id)
+            
+            if success:
+                await update.message.reply_text(
+                    "✅ All your data has been successfully deleted.\n"
+                    "You can start fresh by using the /start command."
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Sorry, there was an error processing your request.\n"
+                    "Please try again later or contact support."
+                )
+                
+        except Exception as e:
+            print(f"[Error] Clearnow command failed: {str(e)}")
+            await update.message.reply_text(
+                "An unexpected error occurred while processing your request.\n"
+                "Please try again later."
+            )
+
     async def handle_background_collection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, message_text: str):
         async with db_session() as db:
             try:
@@ -200,6 +232,11 @@ class BotApplication:
         message_text = update.message.text
 
         try:
+            # Check for {clearnow} command
+            if message_text.strip() == "{clearnow}":
+                await self.clearnow_command(update, context)
+                return
+
             # Handle background collection if needed
             user = get_or_create_user(user_id)
             if not user.background_completed and not context.user_data.get('collecting_background', False):

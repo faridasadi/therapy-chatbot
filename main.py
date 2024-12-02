@@ -3,6 +3,7 @@ import signal
 import uvicorn
 from bot_handlers import create_bot_application
 from re_engagement import run_re_engagement_system
+from context_manager import start_context_management
 from app import app
 
 async def run_api():
@@ -57,7 +58,8 @@ async def main():
         # Create other tasks
         tasks = [
             asyncio.create_task(run_api()),
-            asyncio.create_task(run_re_engagement_system(bot_app.application.bot))
+            asyncio.create_task(run_re_engagement_system(bot_app.application.bot)),
+            asyncio.create_task(start_context_management())
         ]
         
         # Run tasks concurrently

@@ -38,21 +38,58 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         return 'general', 0.0
 
 
-def get_user_context(user_id: int, limit: int = 5) -> List[Dict]:
-    """Get recent conversation context for the user."""
-    db = get_db_session()
-    try:
-        recent_messages = (db.query(Message).filter(
-            Message.user_id == user_id).order_by(
-                Message.timestamp.desc()).limit(limit).all())
+def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
+    """Get recent conversation context for the user including themes, sentiments, and relevant context."""
+    with get_db_session() as db:
+        try:
+            # Get recent messages within time window
+            cutoff_time = datetime.utcnow() - timedelta(hours=time_window)
+            recent_messages = (
+                db.query(Message)
+                .filter(
+                    Message.user_id == user_id,
+                    Message.timestamp >= cutoff_time
+                )
+                .order_by(Message.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
 
-        context = []
-        for msg in reversed(recent_messages):
-            role = "user" if msg.is_from_user else "assistant"
-            context.append({"role": role, "content": msg.content})
-        return context
-    finally:
-        db.close()
+            context = []
+            theme_continuity = {}  # Track theme continuity
+
+            for msg in reversed(recent_messages):
+                role = "user" if msg.is_from_user else "assistant"
+                message_data = {
+                    "role": role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp.isoformat()
+                }
+
+                # Include theme and sentiment with continuity tracking
+                if msg.theme:
+                    message_data["theme"] = msg.theme
+                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + 1
+                
+                if msg.sentiment_score is not None:
+                    message_data["sentiment"] = msg.sentiment_score
+
+                # Get additional context from MessageContext
+                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.4)
+                if message_contexts:
+                    message_data["additional_context"] = message_contexts
+
+                context.append(message_data)
+
+            # Add theme continuity information
+            if context:
+                dominant_theme = max(theme_continuity.items(), key=lambda x: x[1])[0] if theme_continuity else None
+                context[0]["dominant_theme"] = dominant_theme
+
+            return context
+        except Exception as e:
+            logger.error(f"Error getting user context: {str(e)}")
+            return []  # Return empty context on error
 
 
 def update_user_themes(user_id: int, theme: str, sentiment: float):
@@ -79,56 +116,71 @@ def update_user_themes(user_id: int, theme: str, sentiment: float):
 
 def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
     """Get personalized therapy response based on user history and message analysis."""
-    try:
-        # Extract theme and sentiment
-        theme, sentiment = extract_theme_and_sentiment(message)
+    with get_db_session() as db:
+        try:
+            # Extract theme and sentiment
+            theme, sentiment = extract_theme_and_sentiment(message)
 
-        # Get user context and preferences
-        db = get_db_session()
-        user = db.query(User).get(user_id)
-        interaction_style = user.interaction_style if user else 'balanced'
-        db.close()
+            # Save user message with theme and sentiment
+            from database import save_message
+            save_message(user_id, message, True, theme, sentiment)
 
-        # Build conversation context
-        context = get_user_context(user_id)
+            # Get user context and preferences within the same session
+            user = db.query(User).get(user_id)
+            if not user:
+                raise ValueError(f"User {user_id} not found")
+            
+            interaction_style = user.interaction_style
 
-        # Create personalized system prompt
-        system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
-        Current conversation theme: {theme}
-        User's preferred interaction style: {interaction_style}
-        
-        Your responses should be:
-        - Compassionate and understanding
-        - Non-judgmental
-        - Professional but warm
-        - Focused on emotional support
-        - Clear and concise
-        - Aligned with the user's interaction style: {interaction_style}
-        
-        Never provide medical advice or diagnoses. If someone needs immediate help,
-        direct them to professional emergency services."""
+            # Build conversation context
+            context = get_user_context(user_id)
 
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-        ]
-        messages.extend(context)
-        messages.append({"role": "user", "content": message})
+            # Create personalized system prompt with theme awareness
+            system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
+            Current conversation theme: {theme}
+            User's preferred interaction style: {interaction_style}
+            
+            Your responses should be:
+            - Compassionate and understanding
+            - Non-judgmental
+            - Professional but warm
+            - Focused on emotional support
+            - Clear and concise
+            - Aligned with the user's interaction style: {interaction_style}
+            
+            Never provide medical advice or diagnoses. If someone needs immediate help,
+            direct them to professional emergency services."""
 
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            max_tokens=300,
-            temperature=0.7,
-        )
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+            ]
+            messages.extend(context)
+            messages.append({"role": "user", "content": message})
 
-        # Update user themes
-        update_user_themes(user_id, theme, sentiment)
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                max_tokens=300,
+                temperature=0.7,
+            )
 
-        return response.choices[0].message.content, theme, sentiment
+            # Get assistant's response
+            assistant_response = response.choices[0].message.content
 
-    except Exception as e:
-        print(f"Error in get_therapy_response: {str(e)}")
-        return "I apologize, but I'm having trouble processing your message. Could you try rephrasing it?", "error", 0.0
+            # Save assistant's response with theme
+            save_message(user_id, assistant_response, False, theme, sentiment)
+
+            # Update user themes
+            update_user_themes(user_id, theme, sentiment)
+
+            return assistant_response, theme, sentiment
+
+        except Exception as e:
+            print(f"Error in get_therapy_response: {str(e)}")
+            # Save error message to maintain conversation continuity
+            error_message = "I apologize, but I'm having trouble processing your message. Could you try rephrasing it?"
+            save_message(user_id, error_message, False, "error", 0.0)
+            return error_message, "error", 0.0
