@@ -266,8 +266,11 @@ class BotApplication:
                 return
 
             # Get and send AI response with typing indicator
+            print(f"[Debug] Starting AI response generation for user {user_id}")
             async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
+                print(f"[Debug] Calling get_therapy_response with message length: {len(message_text)}")
                 response, theme, sentiment = get_therapy_response(message_text, user_id)
+                print(f"[Debug] AI response generated. Theme: {theme}, Sentiment: {sentiment:.2f}")
                 
                 # Update message theme and sentiment
                 async with db_session() as db:
