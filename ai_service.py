@@ -147,19 +147,22 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
                     print(f"[Warning] Invalid context format detected: {ctx}")
                     context.remove(ctx)
 
-            # Create personalized system prompt with theme awareness
+            # Create personalized system prompt with theme awareness and context maintenance
             system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
             Current conversation theme: {theme}
             User's preferred interaction style: {interaction_style}
-            
+
+            Important: Always maintain conversation context and remember details shared by the user (like names, preferences, etc).
+
             Your responses should be:
             - Compassionate and understanding
             - Non-judgmental
             - Professional but warm
             - Focused on emotional support
             - Clear and concise
+            - Consistent with previously shared information
             - Aligned with the user's interaction style: {interaction_style}
-            
+
             Never provide medical advice or diagnoses. If someone needs immediate help,
             direct them to professional emergency services."""
 
@@ -169,8 +172,28 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
                     "content": system_prompt
                 },
             ]
-            messages.extend(context)
-            messages.append({"role": "user", "content": message})
+            
+            # Format context messages with metadata
+            messages.extend([{
+                "role": msg["role"],
+                "content": msg["content"],
+                "metadata": {
+                    "timestamp": msg["timestamp"],
+                    "theme": msg.get("theme"),
+                    "sentiment": msg.get("sentiment")
+                }
+            } for msg in context])
+            
+            # Add current message with metadata
+            messages.append({
+                "role": "user",
+                "content": message,
+                "metadata": {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "theme": theme,
+                    "sentiment": sentiment
+                }
+            })
 
             response = client.chat.completions.create(
                 model=MODEL,
