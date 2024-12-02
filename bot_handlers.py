@@ -232,7 +232,7 @@ class BotApplication:
         message_text = update.message.text
 
         try:
-            # Check for {clearnow} command
+            # Check for {clearnow} command first
             if message_text.strip() == "{clearnow}":
                 await self.clearnow_command(update, context)
                 return
