@@ -232,6 +232,8 @@ class BotApplication:
         message_text = update.message.text
 
         try:
+            print(f"[Debug] Received message from user {user_id}: {message_text}")
+            
             # Check for {clearnow} command
             if message_text.strip() == "{clearnow}":
                 await self.clearnow_command(update, context)
@@ -260,6 +262,10 @@ class BotApplication:
                 print(f"[Debug] Attempting to save message for user {user_id}")
                 saved = save_message(user_id, message_text, True)
                 print(f"[Debug] Message saved successfully: {bool(saved)}")
+                print(f"[Debug] Message saved to database for user {user_id}")
+                
+                # Send test response
+                await update.message.reply_text("Test message - Please confirm if you receive this.")
                 
                 print(f"[Debug] Checking message quota for user {user_id}")
                 can_respond, remaining = increment_message_count(user_id)
