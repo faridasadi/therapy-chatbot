@@ -38,8 +38,8 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         return 'general', 0.0
 
 
-def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
-    """Get recent conversation context for the user including themes, sentiments, and relevant context."""
+def get_user_context(user_id: int, limit: int = 10, time_window: int = 48) -> List[Dict]:
+    """Get recent conversation context for the user including themes, sentiments, and relevant context with improved error handling."""
     with get_db_session() as db:
         try:
             # Get recent messages within time window
@@ -132,8 +132,20 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
             
             interaction_style = user.interaction_style
 
-            # Build conversation context
-            context = get_user_context(user_id)
+            # Build conversation context with error handling
+            try:
+                context = get_user_context(user_id)
+                if not context:
+                    print(f"[Warning] No context retrieved for user {user_id}")
+            except Exception as e:
+                print(f"[Error] Failed to retrieve context: {str(e)}")
+                context = []
+
+            # Verify context formatting
+            for ctx in context:
+                if not isinstance(ctx, dict) or 'role' not in ctx or 'content' not in ctx:
+                    print(f"[Warning] Invalid context format detected: {ctx}")
+                    context.remove(ctx)
 
             # Create personalized system prompt with theme awareness
             system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.

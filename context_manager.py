@@ -121,8 +121,8 @@ def update_context_relevance(message_id: int, context_type: str, value: str, bat
             logger.error(f"Error updating context relevance: {str(e)}")
             db.rollback()
 
-def get_relevant_context(message_id: int, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
-    """Get most relevant context for a message with optimized memory usage"""
+def get_relevant_context(message_id: int, limit: int = 10, min_relevance: float = 0.2) -> List[Dict]:
+    """Get most relevant context for a message with optimized memory usage and longer retention"""
     with get_db_session() as db:
         try:
             # Join with Message table to get theme information
