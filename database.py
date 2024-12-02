@@ -212,39 +212,7 @@ def delete_user_data(user_id: int, db) -> Tuple[bool, str]:
         print(f"[Database] {error_message}")
         raise Exception(error_message)
 
-def clean_user_data(user_id: int) -> bool:
-    """Clean up all user data and reset background information."""
-    print(f"[Database] Starting data cleanup for user {user_id}")
 
-    with get_db_session() as db:
-        try:
-            with db.begin():
-                user = db.query(User).get(user_id)
-                if not user:
-                    print(f"[Database] User {user_id} not found")
-                    return False
-
-                # Use bulk delete for better performance
-                db.query(Message).filter(Message.user_id == user_id).delete()
-                db.query(UserTheme).filter(UserTheme.user_id == user_id).delete()
-                db.query(Subscription).filter(Subscription.user_id == user_id).delete()
-
-                # Reset user background information
-                user.background_completed = False
-                user.age = None
-                user.gender = None
-                user.therapy_experience = None
-                user.primary_concerns = None
-                user.messages_count = 0
-                user.weekly_messages_count = 0
-                user.last_message_reset = datetime.utcnow()
-
-                print(f"[Database] Successfully cleaned up data for user {user_id}")
-                return True
-
-        except Exception as e:
-            print(f"[Database] Error cleaning up user data: {str(e)}")
-            return False
 
 def get_message_context(user_id: int, limit: int = 5, context_window: int = 24) -> list[Message]:
     """Get recent message context for a user within the specified time window."""

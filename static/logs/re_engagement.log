@@ -500,3 +500,16 @@ WHERE "user".last_message_reset <= %(last_message_reset_1)s AND "user".is_subscr
 2024-12-02 11:01:39,464 - re_engagement - INFO - Starting weekly reset notification process
 2024-12-02 11:01:43,520 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
 2024-12-02 11:01:43,520 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
+2024-12-02 11:02:43,754 - re_engagement - INFO - Starting inactive users re-engagement process
+2024-12-02 11:02:44,224 - re_engagement - INFO - Found 0 inactive users to re-engage
+2024-12-02 11:02:44,224 - re_engagement - INFO - Inactive user re-engagement completed. Success: 0/0
+2024-12-02 11:03:44,458 - re_engagement - INFO - Starting subscription reminder process
+2024-12-02 11:03:44,927 - re_engagement - INFO - Found 0 users eligible for subscription reminders
+2024-12-02 11:03:44,927 - re_engagement - INFO - Subscription reminders completed. Success: 0/0
+2024-12-02 11:03:45,160 - re_engagement - INFO - Re-engagement cycle completed successfully
+2024-12-02 11:03:45,160 - re_engagement - INFO - Waiting 6 hours before next cycle
+2024-12-02 11:05:05,909 - re_engagement - INFO - Starting re-engagement system
+2024-12-02 11:05:05,909 - re_engagement - INFO - Beginning re-engagement cycle
+2024-12-02 11:05:05,912 - re_engagement - INFO - Starting weekly reset notification process
+2024-12-02 11:05:09,888 - re_engagement - INFO - Found 0 users eligible for weekly reset notification
+2024-12-02 11:05:09,888 - re_engagement - INFO - Weekly reset notifications completed. Success: 0/0
