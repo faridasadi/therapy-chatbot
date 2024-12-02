@@ -1,6 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger, Text, Float, ForeignKey, Index
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger, Text, Float, ForeignKey
+from sqlalchemy.orm import relationship
 from db_config import Base
 
 class User(Base):
@@ -65,24 +65,3 @@ class Subscription(Base):
     status = Column(String(32))
     
     user = relationship("User", back_populates="subscriptions")
-
-
-class MessageContext(Base):
-    __tablename__ = 'message_context'
-    
-    id = Column(Integer, primary_key=True)
-    message_id = Column(Integer, ForeignKey('message.id', ondelete='CASCADE'))
-    context_key = Column(String(100))  # Type of context (e.g., 'emotion', 'topic', 'intent')
-    context_value = Column(Text)
-    relevance_score = Column(Float)  # How relevant this context is (0-1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=True)  # When this context should expire
-    
-    message = relationship("Message", backref=backref("contexts", cascade="all, delete-orphan"))
-
-    __table_args__ = (
-        Index('idx_message_context_expires', expires_at),  # Index for context cleanup
-        Index('idx_message_context_message_key', message_id, context_key),  # Composite index for faster lookups
-        Index('idx_message_context_active', expires_at, relevance_score,  # Partial index for active contexts
-              postgresql_where=expires_at > datetime.utcnow())
-    )

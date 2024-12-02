@@ -1,19 +1,17 @@
 import os
-import logging
 from openai import OpenAI
 from config import OPENAI_API_KEY
+
+# the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+# do not change this unless explicitly requested by the user
+MODEL = "gpt-4o-mini"
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 from typing import Tuple, List, Dict
 from app import get_db_session
 from models import Message, UserTheme, User
 from datetime import datetime, timedelta
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# OpenAI client configuration
-MODEL = "gpt-4o-mini"
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
@@ -24,7 +22,6 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         2. A sentiment score (-1 to 1)
         Message: {message}"""
 
-        logger.info("Calling OpenAI API for theme and sentiment analysis")
         analysis = client.chat.completions.create(
             model=MODEL,
             messages=[{
@@ -33,37 +30,29 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
             }],
             max_tokens=100,
             temperature=0.3,
-            response_format={"type": "json_object"})
+        )
 
         result = eval(analysis.choices[0].message.content)
-        logger.info(f"Theme analysis successful: {result}")
         return result.get('theme', 'general'), result.get('sentiment', 0.0)
-
-    except Exception as e:
-        logger.error(f"Theme analysis failed: {str(e)}")
+    except:
         return 'general', 0.0
 
 
 def get_user_context(user_id: int, limit: int = 5) -> List[Dict]:
-    """Get recent conversation context for the user including themes and sentiments."""
-    with get_db_session() as db:
-        try:
-            recent_messages = (db.query(Message).filter(
-                Message.user_id == user_id).order_by(
-                    Message.timestamp.desc()).limit(limit).all())
+    """Get recent conversation context for the user."""
+    db = get_db_session()
+    try:
+        recent_messages = (db.query(Message).filter(
+            Message.user_id == user_id).order_by(
+                Message.timestamp.desc()).limit(limit).all())
 
-            context = []
-            for msg in reversed(recent_messages):
-                role = "user" if msg.is_from_user else "assistant"
-                message_data = {"role": role, "content": msg.content}
-                if msg.theme and msg.sentiment_score is not None:
-                    message_data["theme"] = msg.theme
-                    message_data["sentiment"] = msg.sentiment_score
-                context.append(message_data)
-            return context
-        except Exception as e:
-            logger.error(f"Error getting user context: {str(e)}")
-            return []
+        context = []
+        for msg in reversed(recent_messages):
+            role = "user" if msg.is_from_user else "assistant"
+            context.append({"role": role, "content": msg.content})
+        return context
+    finally:
+        db.close()
 
 
 def update_user_themes(user_id: int, theme: str, sentiment: float):
@@ -84,92 +73,62 @@ def update_user_themes(user_id: int, theme: str, sentiment: float):
             db.add(user_theme)
 
         db.commit()
-    except Exception as e:
-        logger.error(f"Error updating user themes: {str(e)}")
-        db.rollback()
     finally:
         db.close()
 
 
 def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
     """Get personalized therapy response based on user history and message analysis."""
-    with get_db_session() as db:
-        try:
-            # Extract theme and sentiment
-            theme, sentiment = extract_theme_and_sentiment(message)
-            logger.info(
-                f"Message analysis - Theme: {theme}, Sentiment: {sentiment}")
+    try:
+        # Extract theme and sentiment
+        theme, sentiment = extract_theme_and_sentiment(message)
 
-            # Save user message with theme and sentiment
-            from database import save_message
-            save_message(user_id, message, True, theme, sentiment)
+        # Get user context and preferences
+        db = get_db_session()
+        user = db.query(User).get(user_id)
+        interaction_style = user.interaction_style if user else 'balanced'
+        db.close()
 
-            # Get user context and preferences
-            user = db.query(User).get(user_id)
-            if not user:
-                raise ValueError(f"User {user_id} not found")
+        # Build conversation context
+        context = get_user_context(user_id)
 
-            interaction_style = user.interaction_style
-            logger.info(
-                f"Retrieved user preferences - Style: {interaction_style}")
+        # Create personalized system prompt
+        system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
+        Current conversation theme: {theme}
+        User's preferred interaction style: {interaction_style}
+        
+        Your responses should be:
+        - Compassionate and understanding
+        - Non-judgmental
+        - Professional but warm
+        - Focused on emotional support
+        - Clear and concise
+        - Aligned with the user's interaction style: {interaction_style}
+        
+        Never provide medical advice or diagnoses. If someone needs immediate help,
+        direct them to professional emergency services."""
 
-            # Build conversation context
-            context = get_user_context(user_id)
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+        ]
+        messages.extend(context)
+        messages.append({"role": "user", "content": message})
 
-            # Create personalized system prompt
-            system_prompt = f"""You are Therapyyy, an empathetic and supportive AI therapy assistant.
-            Current conversation theme: {theme}
-            User's preferred interaction style: {interaction_style}
-            
-            Your responses should be:
-            - Compassionate and understanding
-            - Non-judgmental
-            - Professional but warm
-            - Focused on emotional support
-            - Clear and concise
-            - Aligned with the user's interaction style: {interaction_style}
-            
-            Never provide medical advice or diagnoses. If someone needs immediate help,
-            direct them to professional emergency services."""
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+        )
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-            ]
-            messages.extend(context)
-            messages.append({"role": "user", "content": message})
+        # Update user themes
+        update_user_themes(user_id, theme, sentiment)
 
-            logger.info("Calling OpenAI API for therapy response")
-            try:
-                response = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages,
-                    max_tokens=300,
-                    temperature=0.7,
-                )
+        return response.choices[0].message.content, theme, sentiment
 
-                assistant_response = response.choices[0].message.content
-                logger.info("Successfully generated therapy response")
-
-                # Save assistant's response with theme
-                save_message(user_id, assistant_response, False, theme,
-                             sentiment)
-
-                # Update user themes
-                update_user_themes(user_id, theme, sentiment)
-
-                return assistant_response, theme, sentiment
-
-            except Exception as api_error:
-                logger.error(f"OpenAI API error: {str(api_error)}")
-                error_message = "I apologize, but I'm having trouble processing your message right now. Could you try again in a moment?"
-                save_message(user_id, error_message, False, "error", 0.0)
-                return error_message, "error", 0.0
-
-        except Exception as e:
-            logger.error(f"Error in get_therapy_response: {str(e)}")
-            error_message = "I apologize, but I'm having trouble processing your message. Could you try rephrasing it?"
-            save_message(user_id, error_message, False, "error", 0.0)
-            return error_message, "error", 0.0
+    except Exception as e:
+        print(f"Error in get_therapy_response: {str(e)}")
+        return "I apologize, but I'm having trouble processing your message. Could you try rephrasing it?", "error", 0.0

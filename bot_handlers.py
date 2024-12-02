@@ -60,38 +60,23 @@ class BotApplication:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_user:
-            print("[Debug] Start command received but no effective user")
             return
 
         user_id = update.effective_user.id
-        print(f"[Debug] /start command received from user: {user_id}")
-        
         try:
             async with db_session() as db:
-                print(f"[Debug] Checking if user {user_id} exists in database")
                 user = db.query(User).get(user_id)
-                
                 if not user:
-                    print(f"[Debug] Creating new user {user_id}")
-                    try:
-                        user = User(
-                            id=user_id,
-                            username=update.effective_user.username,
-                            first_name=update.effective_user.first_name,
-                            joined_at=datetime.utcnow()
-                        )
-                        db.add(user)
-                        db.commit()
-                        print(f"[Debug] Successfully created new user {user_id}")
-                    except Exception as e:
-                        print(f"[Error] Failed to create new user {user_id}: {str(e)}")
-                        await update.message.reply_text("I encountered an error setting up your account. Please try /start again.")
-                        return
-                else:
-                    print(f"[Debug] Found existing user {user_id}")
+                    user = User(
+                        id=user_id,
+                        username=update.effective_user.username,
+                        first_name=update.effective_user.first_name,
+                        joined_at=datetime.utcnow()
+                    )
+                    db.add(user)
+                    db.commit()
                 
                 if not user.background_completed:
-                    print(f"[Debug] Starting background collection for user {user_id}")
                     welcome_text = (
                         f"{WELCOME_MESSAGE}\n\n"
                         "To provide you with the best possible support, I'd like to learn a bit about you. "
@@ -99,17 +84,13 @@ class BotApplication:
                         "What is your age? (Just enter a number)")
                     context.user_data['collecting_background'] = True
                     context.user_data['background_step'] = 'age'
-                    print(f"[Debug] Set background collection state for user {user_id}, step: age")
                 else:
-                    print(f"[Debug] User {user_id} already completed background information")
                     welcome_text = (
                         f"{WELCOME_MESSAGE}\n\n"
                         "Welcome back! I remember our previous conversations and I'm here to support you."
                     )
                 
                 await update.message.reply_text(welcome_text)
-                # Send test response
-                await update.message.reply_text("Test response - Please confirm you received this message")
                 
         except Exception as e:
             print(f"[Error] Start command failed: {str(e)}")
@@ -148,51 +129,11 @@ class BotApplication:
             print(f"[Error] Status command failed: {str(e)}")
             await update.message.reply_text("An error occurred. Please try again.")
 
-    async def clearnow_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Hidden command to delete all user data"""
-        if not update.effective_user:
-            return
-
-        user_id = update.effective_user.id
-        print("[Debug] Clearnow command received from user:", user_id)
-        try:
-            await update.message.reply_text("🔄 Processing your data deletion request...")
-            
-            # Delete all user data
-            from database import delete_user_data
-            success = delete_user_data(user_id)
-            
-            if success:
-                await update.message.reply_text(
-                    "✅ All your data has been successfully deleted.\n"
-                    "You can start fresh by using the /start command."
-                )
-            else:
-                await update.message.reply_text(
-                    "❌ Sorry, there was an error processing your request.\n"
-                    "Please try again later or contact support."
-                )
-                
-        except Exception as e:
-            print(f"[Error] Clearnow command failed: {str(e)}")
-            await update.message.reply_text(
-                "An unexpected error occurred while processing your request.\n"
-                "Please try again later."
-            )
-
     async def handle_background_collection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, message_text: str):
-        print(f"[Debug] Starting background collection for user {user_id}")
         async with db_session() as db:
             try:
-                print(f"[Debug] Fetching user {user_id} from database")
                 user = db.query(User).get(user_id)
-                if not user:
-                    print(f"[Error] User {user_id} not found in database during background collection")
-                    await update.message.reply_text("An error occurred. Please try /start again.")
-                    return
-                
                 current_step = context.user_data.get('background_step', 'age')
-                print(f"[Debug] Current background collection step for user {user_id}: {current_step}")
 
                 if current_step == 'age':
                     try:
@@ -259,13 +200,6 @@ class BotApplication:
         message_text = update.message.text
 
         try:
-            print(f"[Debug] Received message from user {user_id}: {message_text}")
-            
-            # Check for {clearnow} command
-            if message_text.strip() == "{clearnow}":
-                await self.clearnow_command(update, context)
-                return
-
             # Handle background collection if needed
             user = get_or_create_user(user_id)
             if not user.background_completed and not context.user_data.get('collecting_background', False):
@@ -281,72 +215,40 @@ class BotApplication:
                 return
 
             # Process regular message
-            print(f"[Debug] Message processing started for user {user_id}")
-            print(f"[Received] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {message_text}")
+            save_message(user_id, message_text, True)
+            can_respond, remaining = increment_message_count(user_id)
 
-            # Save user message and check quota
-            try:
-                print(f"[Debug] Attempting to save message for user {user_id}")
-                saved = save_message(user_id, message_text, True)
-                print(f"[Debug] Message saved successfully: {bool(saved)}")
-                print(f"[Debug] Message saved to database for user {user_id}")
+            if not can_respond:
+                async with db_session() as db:
+                    user = db.query(User).get(user_id)
+                    if user:
+                        user.subscription_prompt_views += 1
+                        db.commit()
+                await update.message.reply_text(SUBSCRIPTION_PROMPT)
+                return
+
+            # Get and send AI response with typing indicator
+            async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)) as typing_task:
+                response, theme, sentiment = get_therapy_response(message_text, user_id)
                 
-                # Send test response
-                await update.message.reply_text("Test message - Please confirm if you receive this.")
-                
-                print(f"[Debug] Checking message quota for user {user_id}")
-                can_respond, remaining = increment_message_count(user_id)
-                print(f"[Debug] Quota check result - Can respond: {can_respond}, Remaining: {remaining}")
+                # Update message theme and sentiment
+                async with db_session() as db:
+                    latest_message = db.query(Message).filter(
+                        Message.user_id == user_id
+                    ).order_by(Message.timestamp.desc()).first()
+                    if latest_message:
+                        latest_message.theme = theme
+                        latest_message.sentiment_score = sentiment
+                        db.commit()
 
-                if not can_respond:
-                    print(f"[Debug] User {user_id} has reached message limit")
-                    async with db_session() as db:
-                        user = db.query(User).get(user_id)
-                        if user:
-                            user.subscription_prompt_views += 1
-                            db.commit()
-                            print(f"[Debug] Updated subscription prompt views for user {user_id}")
-                    await update.message.reply_text(SUBSCRIPTION_PROMPT)
-                    return
+                save_message(user_id, response, False)
+                await update.message.reply_text(response)
 
-                # Get and send AI response with typing indicator
-                print(f"[Debug] Starting AI response generation for user {user_id}")
-                async with asyncio.create_task(self._keep_typing(update.effective_chat.id, context.bot)):
-                    print(f"[Debug] Calling get_therapy_response with message length: {len(message_text)}")
-                    response, theme, sentiment = get_therapy_response(message_text, user_id)
-                    print(f"[Debug] AI response generated. Theme: {theme}, Sentiment: {sentiment:.2f}")
-                    
-                    # Update message theme and sentiment
-                    print(f"[Debug] Updating message theme and sentiment for user {user_id}")
-                    async with db_session() as db:
-                        latest_message = db.query(Message).filter(
-                            Message.user_id == user_id
-                        ).order_by(Message.timestamp.desc()).first()
-                        if latest_message:
-                            latest_message.theme = theme
-                            latest_message.sentiment_score = sentiment
-                            db.commit()
-                            print(f"[Debug] Successfully updated message metadata for user {user_id}")
-                        else:
-                            print(f"[Warning] Could not find latest message for user {user_id}")
-
-                    print(f"[Debug] Saving bot response for user {user_id}")
-                    save_message(user_id, response, False)
-                    print(f"[Sent] [UserID: {user_id}] [Timestamp: {datetime.utcnow()}]: {response}")
-                    await update.message.reply_text(response)
-
-                # Notify about remaining messages
-                if 0 < remaining <= 2:
-                    await update.message.reply_text(
-                        f"⚠️ Only {remaining} messages left! "
-                        "Upgrade now to unlock unlimited conversations!")
-
-            except Exception as e:
-                error_msg = f"[Error] Message processing failed: {str(e)}"
-                print(error_msg)
+            # Notify about remaining messages
+            if 0 < remaining <= 2:
                 await update.message.reply_text(
-                    "I apologize, but I encountered an error processing your message. Please try again."
-                )
+                    f"⚠️ Only {remaining} messages left! "
+                    "Upgrade now to unlock unlimited conversations!")
 
         except Exception as e:
             print(f"[Error] Message handling failed: {str(e)}")
