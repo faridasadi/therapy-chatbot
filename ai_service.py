@@ -2,9 +2,8 @@ import os
 from openai import OpenAI
 from config import OPENAI_API_KEY
 
-# the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
 # do not change this unless explicitly requested by the user
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-4o"
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -38,22 +37,18 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
         return 'general', 0.0
 
 
-def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> List[Dict]:
+def get_user_context(user_id: int,
+                     limit: int = 5,
+                     time_window: int = 24) -> List[Dict]:
     """Get recent conversation context for the user including themes, sentiments, and relevant context."""
     with get_db_session() as db:
         try:
             # Get recent messages within time window
             cutoff_time = datetime.utcnow() - timedelta(hours=time_window)
-            recent_messages = (
-                db.query(Message)
-                .filter(
-                    Message.user_id == user_id,
-                    Message.timestamp >= cutoff_time
-                )
-                .order_by(Message.timestamp.desc())
-                .limit(limit)
-                .all()
-            )
+            recent_messages = (db.query(Message).filter(
+                Message.user_id == user_id, Message.timestamp
+                >= cutoff_time).order_by(
+                    Message.timestamp.desc()).limit(limit).all())
 
             context = []
             theme_continuity = {}  # Track theme continuity
@@ -69,13 +64,16 @@ def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> Lis
                 # Include theme and sentiment with continuity tracking
                 if msg.theme:
                     message_data["theme"] = msg.theme
-                    theme_continuity[msg.theme] = theme_continuity.get(msg.theme, 0) + 1
-                
+                    theme_continuity[msg.theme] = theme_continuity.get(
+                        msg.theme, 0) + 1
+
                 if msg.sentiment_score is not None:
                     message_data["sentiment"] = msg.sentiment_score
 
                 # Get additional context from MessageContext
-                message_contexts = get_relevant_context(msg.id, limit=3, min_relevance=0.4)
+                message_contexts = get_relevant_context(msg.id,
+                                                        limit=3,
+                                                        min_relevance=0.4)
                 if message_contexts:
                     message_data["additional_context"] = message_contexts
 
@@ -83,7 +81,9 @@ def get_user_context(user_id: int, limit: int = 5, time_window: int = 24) -> Lis
 
             # Add theme continuity information
             if context:
-                dominant_theme = max(theme_continuity.items(), key=lambda x: x[1])[0] if theme_continuity else None
+                dominant_theme = max(
+                    theme_continuity.items(),
+                    key=lambda x: x[1])[0] if theme_continuity else None
                 context[0]["dominant_theme"] = dominant_theme
 
             return context
@@ -129,7 +129,7 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
             user = db.query(User).get(user_id)
             if not user:
                 raise ValueError(f"User {user_id} not found")
-            
+
             interaction_style = user.interaction_style
 
             # Build conversation context
