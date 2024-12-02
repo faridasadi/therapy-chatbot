@@ -2,8 +2,8 @@ import os
 from openai import OpenAI
 from config import OPENAI_API_KEY
 
-# do not change this unless explicitly requested by the user
-MODEL = "gpt-4o"
+# Updated as requested by manager
+MODEL = "gpt-4"
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 

@@ -91,12 +91,21 @@ async def notify_weekly_reset(bot: Bot):
     db = get_db_session()
     try:
         # Find users whose weekly messages were reset
-        users = db.query(User).filter(
+        query = db.query(User).filter(
             User.last_message_reset <= datetime.utcnow() - timedelta(days=7),
-            User.is_subscribed == False
-        ).all()
+            User.is_subscribed == False,
+            User.weekly_messages_count > 0  # Only notify users who have used messages
+        )
         
-        logger.info(f"Found {len(users)} users eligible for weekly reset notification")
+        # Log the SQL query for debugging
+        logger.debug(f"Weekly reset query: {query.statement}")
+        
+        try:
+            users = query.all()
+            logger.info(f"Found {len(users)} users eligible for weekly reset notification")
+        except Exception as db_error:
+            logger.error(f"Database error in notify_weekly_reset: {str(db_error)}")
+            raise
         
         success_count = 0
         for user in users:
