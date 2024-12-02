@@ -12,8 +12,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI client configuration
-MODEL = "gpt-4"  # Using GPT-4 model as it's more stable than gpt-4o
+MODEL = "gpt-4o-mini"
 client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
     """Extract the main theme and sentiment from a message using OpenAI."""
@@ -32,34 +33,29 @@ def extract_theme_and_sentiment(message: str) -> Tuple[str, float]:
             }],
             max_tokens=100,
             temperature=0.3,
-            response_format={"type": "json_object"}
-        )
-        
+            response_format={"type": "json_object"})
+
         result = eval(analysis.choices[0].message.content)
         logger.info(f"Theme analysis successful: {result}")
         return result.get('theme', 'general'), result.get('sentiment', 0.0)
-    
+
     except Exception as e:
         logger.error(f"Theme analysis failed: {str(e)}")
         return 'general', 0.0
+
 
 def get_user_context(user_id: int, limit: int = 5) -> List[Dict]:
     """Get recent conversation context for the user including themes and sentiments."""
     with get_db_session() as db:
         try:
-            recent_messages = (db.query(Message)
-                             .filter(Message.user_id == user_id)
-                             .order_by(Message.timestamp.desc())
-                             .limit(limit)
-                             .all())
+            recent_messages = (db.query(Message).filter(
+                Message.user_id == user_id).order_by(
+                    Message.timestamp.desc()).limit(limit).all())
 
             context = []
             for msg in reversed(recent_messages):
                 role = "user" if msg.is_from_user else "assistant"
-                message_data = {
-                    "role": role,
-                    "content": msg.content
-                }
+                message_data = {"role": role, "content": msg.content}
                 if msg.theme and msg.sentiment_score is not None:
                     message_data["theme"] = msg.theme
                     message_data["sentiment"] = msg.sentiment_score
@@ -69,25 +65,22 @@ def get_user_context(user_id: int, limit: int = 5) -> List[Dict]:
             logger.error(f"Error getting user context: {str(e)}")
             return []
 
+
 def update_user_themes(user_id: int, theme: str, sentiment: float):
     """Update or create user theme statistics."""
     db = get_db_session()
     try:
-        user_theme = (db.query(UserTheme)
-                     .filter(UserTheme.user_id == user_id, 
-                            UserTheme.theme == theme)
-                     .first())
+        user_theme = (db.query(UserTheme).filter(
+            UserTheme.user_id == user_id, UserTheme.theme == theme).first())
 
         if user_theme:
             user_theme.frequency += 1
             user_theme.sentiment = (user_theme.sentiment + sentiment) / 2
             user_theme.last_mentioned = datetime.utcnow()
         else:
-            user_theme = UserTheme(
-                user_id=user_id,
-                theme=theme,
-                sentiment=sentiment
-            )
+            user_theme = UserTheme(user_id=user_id,
+                                   theme=theme,
+                                   sentiment=sentiment)
             db.add(user_theme)
 
         db.commit()
@@ -97,13 +90,15 @@ def update_user_themes(user_id: int, theme: str, sentiment: float):
     finally:
         db.close()
 
+
 def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
     """Get personalized therapy response based on user history and message analysis."""
     with get_db_session() as db:
         try:
             # Extract theme and sentiment
             theme, sentiment = extract_theme_and_sentiment(message)
-            logger.info(f"Message analysis - Theme: {theme}, Sentiment: {sentiment}")
+            logger.info(
+                f"Message analysis - Theme: {theme}, Sentiment: {sentiment}")
 
             # Save user message with theme and sentiment
             from database import save_message
@@ -113,9 +108,10 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
             user = db.query(User).get(user_id)
             if not user:
                 raise ValueError(f"User {user_id} not found")
-            
+
             interaction_style = user.interaction_style
-            logger.info(f"Retrieved user preferences - Style: {interaction_style}")
+            logger.info(
+                f"Retrieved user preferences - Style: {interaction_style}")
 
             # Build conversation context
             context = get_user_context(user_id)
@@ -137,7 +133,10 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
             direct them to professional emergency services."""
 
             messages = [
-                {"role": "system", "content": system_prompt},
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
             ]
             messages.extend(context)
             messages.append({"role": "user", "content": message})
@@ -150,12 +149,13 @@ def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
                     max_tokens=300,
                     temperature=0.7,
                 )
-                
+
                 assistant_response = response.choices[0].message.content
                 logger.info("Successfully generated therapy response")
 
                 # Save assistant's response with theme
-                save_message(user_id, assistant_response, False, theme, sentiment)
+                save_message(user_id, assistant_response, False, theme,
+                             sentiment)
 
                 # Update user themes
                 update_user_themes(user_id, theme, sentiment)
