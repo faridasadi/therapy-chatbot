@@ -12,8 +12,6 @@ from database import get_db_session, save_message
 from models import Message, UserTheme, User
 from datetime import datetime, timedelta
 import logging
-import time
-from monitoring import pipeline_monitor, monitor_pipeline_stage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -121,15 +119,12 @@ def update_user_themes(user_id: int, theme: str, sentiment: float):
         db.close()
 
 
-@monitor_pipeline_stage("ai_response_generation")
 def get_therapy_response(message: str, user_id: int) -> Tuple[str, str, float]:
     """Get personalized therapy response based on user history and message analysis."""
     with get_db_session() as db:
         try:
             # Extract theme and sentiment
-            start_time = time.time()
             theme, sentiment = extract_theme_and_sentiment(message)
-            pipeline_monitor.record_api_call(time.time() - start_time)
 
             # Save user message with theme and sentiment
             from database import save_message

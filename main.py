@@ -1,25 +1,16 @@
 import asyncio
-import os
 import signal
 import logging
 from typing import Optional
 from bot_handlers import create_bot_application
 from re_engagement import run_re_engagement_system
 from context_manager import start_context_management
-from monitoring import log_metrics_periodically, pipeline_monitor
-
-# Ensure logs directory exists
-os.makedirs('logs', exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.FileHandler('logs/bot.log'),
-        logging.StreamHandler()
-    ]
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
@@ -56,9 +47,7 @@ async def main():
         tasks = [
             asyncio.create_task(start_context_management(), name="context_management"),
             asyncio.create_task(run_re_engagement_system(bot_app.application.bot), name="re_engagement"),
-            asyncio.create_task(bot_app.application.updater.start_polling(), name="bot_polling"),
-            # Enhanced metrics logging
-            asyncio.create_task(log_metrics_periodically(interval=30), name="metrics_logging"),  # Log metrics every 30 seconds
+            asyncio.create_task(bot_app.application.updater.start_polling(), name="bot_polling")
         ]
         
         # Wait for tasks to complete or for shutdown signal

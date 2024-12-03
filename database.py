@@ -67,6 +67,7 @@ def get_cached_user(user_id: int) -> Optional[User]:
     with get_db_session() as db:
         return db.query(User).get(user_id)
 
+# Session management is handled by the SessionFactory defined above
 @contextmanager
 def get_db_session():
     """Enhanced context manager for database sessions with improved transaction management"""
@@ -79,28 +80,27 @@ def get_db_session():
             # Create a new session
             session = SessionFactory()
             
-            try:
-                # Test connection without starting transaction
-                session.execute(text("SELECT 1"))
-                logger.info("Database connection established and verified")
-                
-                yield session
-                
-                # Only commit if there are actual changes
-                if session.dirty or session.new or session.deleted:
-                    session.commit()
-                    logger.info("Database transaction completed successfully")
-                
-            except Exception as inner_error:
-                if session.in_transaction():
-                    session.rollback()
-                    logger.info("Session rolled back due to error")
-                raise inner_error
-                
-            break  # Success, exit retry loop
+            # Verify connection is alive without starting a transaction
+            session.execute(text("SELECT 1"))
+            logger.info("Database connection established and verified")
+            
+            yield session
+            
+            # Commit any pending changes
+            if session.dirty or session.new or session.deleted:
+                session.commit()
+                logger.info("Database transaction committed successfully")
+            break
             
         except Exception as e:
             logger.error(f"Database session error (attempt {attempt + 1}/{max_retries}): {str(e)}")
+            if session:
+                try:
+                    if session.in_transaction():
+                        session.rollback()
+                        logger.info("Session rolled back successfully")
+                except Exception as rollback_error:
+                    logger.error(f"Error during rollback: {str(rollback_error)}")
             
             if attempt < max_retries - 1:
                 retry_time = retry_delay * (2 ** attempt)  # Exponential backoff
@@ -123,6 +123,7 @@ def init_database():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
 
+# Rest of the database functions...
 from models import User, Message, UserTheme, Subscription, MessageContext
 
 def get_or_create_user(user_id: int, username: Optional[str] = None, first_name: Optional[str] = None) -> User:
