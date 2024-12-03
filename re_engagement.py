@@ -4,7 +4,9 @@ from sqlalchemy.orm import immediateload
 from database import get_db_session
 from models import User, Message, UserTheme, Subscription
 from config import WEEKLY_FREE_MESSAGES
+from telegram.ext import Application
 from telegram import Bot
+from telegram.constants import ChatAction
 from telegram.error import TelegramError, TimedOut, NetworkError
 from typing import List, Dict, Tuple
 import asyncio

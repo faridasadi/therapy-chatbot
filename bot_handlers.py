@@ -1,9 +1,9 @@
 import os
 import time
 import logging
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from telegram import Update
-from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
-                          CallbackContext)
+from telegram.constants import ChatAction, ChatType
 from monitoring import pipeline_monitor, monitor_pipeline_stage
 from database import get_db_session
 from models import User
