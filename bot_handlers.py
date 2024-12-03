@@ -18,16 +18,23 @@ logger = logging.getLogger(__name__)
 class BotApplication:
 
     def __init__(self):
-        """Initialize bot application"""
+        """Initialize bot application with enhanced error handling"""
         logger.info("[Bot] Initializing bot application")
-        self.token = os.environ.get('TELEGRAM_BOT_TOKEN')
-        if not self.token:
-            raise ValueError(
-                "TELEGRAM_BOT_TOKEN not found in environment variables")
-
-        self.application = Application.builder().token(self.token).build()
-        logger.info("Bot application created with token length: %d",
-                    len(self.token))
+        try:
+            self.token = os.environ.get('TELEGRAM_BOT_TOKEN')
+            if not self.token or not self.token.strip():
+                raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables or is empty")
+            
+            # Create the application with the token directly
+            self.application = Application.builder().token(self.token).build()
+            logger.info("Bot application created successfully")
+            
+        except ValueError as ve:
+            logger.error(f"Token validation error: {str(ve)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during bot initialization: {str(e)}")
+            raise ValueError(f"Failed to initialize bot: {str(e)}")
 
     @monitor_pipeline_stage("message_received")
     async def handle_message(self, update: Update, context: CallbackContext):

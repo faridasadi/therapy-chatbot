@@ -5,7 +5,9 @@ from typing import Final
 OPENAI_API_KEY: Final = os.environ.get("OPENAI_API_KEY")
 
 # Telegram configuration
-TELEGRAM_TOKEN: Final = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_TOKEN: Final = os.environ.get("TELEGRAM_BOT_TOKEN")
+if not TELEGRAM_TOKEN or not TELEGRAM_TOKEN.strip():
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set or empty")
 
 # Database configuration
 DATABASE_URL: Final = os.environ.get("DATABASE_URL")
