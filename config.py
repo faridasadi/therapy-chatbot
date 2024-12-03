@@ -9,6 +9,10 @@ TELEGRAM_TOKEN: Final = os.environ.get("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN or not TELEGRAM_TOKEN.strip():
     raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set or empty")
 
+# Webhook configuration
+WEBHOOK_URL: Final = os.environ.get("WEBHOOK_URL")
+WEBHOOK_PORT: Final = int(os.environ.get("WEBHOOK_PORT", "8443"))
+USE_WEBHOOK: Final = os.environ.get("USE_WEBHOOK", "false").lower() == "true"
 # Database configuration
 DATABASE_URL: Final = os.environ.get("DATABASE_URL")
 

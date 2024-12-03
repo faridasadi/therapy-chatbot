@@ -9,6 +9,23 @@ from database import get_db_session
 from models import User
 from ai_service import get_therapy_response
 import asyncio
+import config
+import logging
+import os
+import time
+from aiohttp import web
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackContext,
+    filters
+)
+from database import get_db_session
+from models import User
+from monitoring import monitor_pipeline_stage, pipeline_monitor
+from ai_service import get_therapy_response
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -135,6 +152,48 @@ class BotApplication:
         """Handle errors"""
         logger.error(f"Error handling update: {context.error}")
 
+    async def setup_webhook(self):
+        """Setup webhook for the bot with retry mechanism"""
+        webhook_url = config.WEBHOOK_URL
+        if not webhook_url:
+            raise ValueError("WEBHOOK_URL environment variable is not set")
+        
+        webhook_url = f"{webhook_url}/telegram"
+        max_retries = 5
+        base_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                await self.application.bot.set_webhook(url=webhook_url)
+                logger.info(f"Webhook set up at {webhook_url}")
+                return
+            except Exception as e:
+                if "429" in str(e):  # Rate limit error
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(f"Rate limit hit. Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        raise Exception(f"Failed to set webhook after {max_retries} attempts")
+
+    async def create_webhook_app(self, webhook_path: str, webhook_url: str) -> web.Application:
+        """Create webhook application"""
+        app = web.Application()
+        
+        async def handle_webhook(request):
+            """Handle webhook requests"""
+            try:
+                update = await Update.de_json(await request.json(), self.application.bot)
+                await self.application.process_update(update)
+                return web.Response()
+            except Exception as e:
+                logger.error(f"Error processing webhook update: {e}")
+                return web.Response(status=500)
+        
+        app.router.add_post(f"/{webhook_path}", handle_webhook)
+        return app
+        
     async def initialize(self):
         """Initialize bot handlers"""
         try:
@@ -156,6 +215,11 @@ class BotApplication:
             self.application.add_error_handler(self.error_handler)
 
             await self.application.initialize()
+            
+            # Setup webhook if enabled
+            if config.USE_WEBHOOK:
+                await self.setup_webhook()
+            
             logger.info("Bot successfully initialized")
         except Exception as e:
             logger.error(f"Bot initialization failed: {str(e)}")
