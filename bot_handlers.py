@@ -2,13 +2,8 @@ import os
 import time
 import logging
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    CallbackContext
-)
+from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
+                          CallbackContext)
 from monitoring import pipeline_monitor, monitor_pipeline_stage
 from database import get_db_session
 from models import User
@@ -19,16 +14,20 @@ import asyncio
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class BotApplication:
+
     def __init__(self):
         """Initialize bot application"""
         logger.info("[Bot] Initializing bot application")
         self.token = os.environ.get('TELEGRAM_BOT_TOKEN')
         if not self.token:
-            raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables")
-            
+            raise ValueError(
+                "TELEGRAM_BOT_TOKEN not found in environment variables")
+
         self.application = Application.builder().token(self.token).build()
-        logger.info("Bot application created with token length: %d", len(self.token))
+        logger.info("Bot application created with token length: %d",
+                    len(self.token))
 
     @monitor_pipeline_stage("message_received")
     async def handle_message(self, update: Update, context: CallbackContext):
@@ -37,37 +36,39 @@ class BotApplication:
         try:
             user_id = update.effective_user.id
             logger.info("Message received from user %s", user_id)
-            
+
             # Record processing start
             process_start_time = time.time()
-            pipeline_monitor.record_pipeline_stage("processing_start", process_start_time - start_time)
+            pipeline_monitor.record_pipeline_stage(
+                "processing_start", process_start_time - start_time)
             logger.info("Message processing started for user %s", user_id)
-            
+
             # Get response from AI service
             response_start_time = time.time()
             response, theme, sentiment = await get_therapy_response(
-                update.message.text,
-                user_id
-            )
-            
+                update.message.text, user_id)
+
             # Record response generation
             response_time = time.time() - response_start_time
-            pipeline_monitor.record_pipeline_stage("response_generated", response_time)
+            pipeline_monitor.record_pipeline_stage("response_generated",
+                                                   response_time)
             logger.info("Response generated in %.2fs", response_time)
-            
+
             # Send response back to user
             send_start_time = time.time()
             await update.message.reply_text(response)
-            
+
             # Record message sent
             send_time = time.time() - send_start_time
             pipeline_monitor.record_pipeline_stage("response_sent", send_time)
-            logger.info("Response sent to user %s in %.2fs", user_id, send_time)
-            
+            logger.info("Response sent to user %s in %.2fs", user_id,
+                        send_time)
+
             # Record total processing time
             total_time = time.time() - start_time
-            logger.info("Total processing time for user %s: %.2fs", user_id, total_time)
-            
+            logger.info("Total processing time for user %s: %.2fs", user_id,
+                        total_time)
+
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}")
             await update.message.reply_text(
@@ -80,34 +81,31 @@ class BotApplication:
             "👋 Welcome to Therapyyy! I'm here to listen and support you.\n\n"
             "You can start chatting with me right away. I'll do my best to provide "
             "thoughtful responses and support.\n\n"
-            "Type /help for more information about how I can assist you."
-        )
+            "Type /help for more information about how I can assist you.")
         await update.message.reply_text(welcome_message)
 
     async def help_command(self, update: Update, context: CallbackContext):
         """Handle /help command"""
-        help_text = (
-            "🤗 Here's how I can help:\n\n"
-            "- Chat with me about anything that's on your mind\n"
-            "- Share your feelings and experiences\n"
-            "- Get support and perspective\n\n"
-            "Commands:\n"
-            "/start - Start a conversation\n"
-            "/help - Show this help message\n"
-            "/subscribe - Get information about subscription\n"
-            "/status - Check your usage status"
-        )
+        help_text = ("🤗 Here's how I can help:\n\n"
+                     "- Chat with me about anything that's on your mind\n"
+                     "- Share your feelings and experiences\n"
+                     "- Get support and perspective\n\n"
+                     "Commands:\n"
+                     "/start - Start a conversation\n"
+                     "/help - Show this help message\n"
+                     "/subscribe - Get information about subscription\n"
+                     "/status - Check your usage status")
         await update.message.reply_text(help_text)
 
-    async def subscribe_command(self, update: Update, context: CallbackContext):
+    async def subscribe_command(self, update: Update,
+                                context: CallbackContext):
         """Handle /subscribe command"""
         subscription_text = (
             "💎 Premium Features:\n\n"
             "- Unlimited conversations\n"
             "- Priority response time\n"
             "- Enhanced conversation memory\n\n"
-            "Contact our support team for subscription details."
-        )
+            "Contact our support team for subscription details.")
         await update.message.reply_text(subscription_text)
 
     async def status_command(self, update: Update, context: CallbackContext):
@@ -134,13 +132,22 @@ class BotApplication:
         """Initialize bot handlers"""
         try:
             # Configure handlers
-            self.application.add_handler(CommandHandler("start", self.start_command, block=False))
-            self.application.add_handler(CommandHandler("help", self.help_command, block=False))
-            self.application.add_handler(CommandHandler("subscribe", self.subscribe_command, block=False))
-            self.application.add_handler(CommandHandler("status", self.status_command, block=False))
-            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message, block=False))
+            self.application.add_handler(
+                CommandHandler("start", self.start_command, block=False))
+            self.application.add_handler(
+                CommandHandler("help", self.help_command, block=False))
+            self.application.add_handler(
+                CommandHandler("subscribe",
+                               self.subscribe_command,
+                               block=False))
+            self.application.add_handler(
+                CommandHandler("status", self.status_command, block=False))
+            self.application.add_handler(
+                MessageHandler(filters.TEXT & ~filters.COMMAND,
+                               self.handle_message,
+                               block=False))
             self.application.add_error_handler(self.error_handler)
-            
+
             await self.application.initialize()
             logger.info("Bot successfully initialized")
         except Exception as e:
@@ -153,8 +160,7 @@ class BotApplication:
             await self.application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True,
-                close_loop=False
-            )
+                close_loop=False)
         except Exception as e:
             logger.error(f"Bot startup failed: {str(e)}")
             raise
@@ -164,6 +170,7 @@ class BotApplication:
         if self.application:
             await self.application.stop()
             await self.application.shutdown()
+
 
 def create_bot_application():
     return BotApplication()
