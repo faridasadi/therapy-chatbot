@@ -12,6 +12,7 @@ import asyncio
 import config
 import logging
 import os
+import random
 import time
 from aiohttp import web
 from telegram import Update
@@ -153,27 +154,48 @@ class BotApplication:
         logger.error(f"Error handling update: {context.error}")
 
     async def setup_webhook(self):
-        """Setup webhook for the bot with retry mechanism"""
+        """Setup webhook for the bot with enhanced retry mechanism and verification"""
         webhook_url = config.WEBHOOK_URL
         if not webhook_url:
             raise ValueError("WEBHOOK_URL environment variable is not set")
         
         webhook_url = f"{webhook_url}/telegram"
-        max_retries = 5
-        base_delay = 2
+        max_retries = 8
+        base_delay = 10  # Increased base delay
         
         for attempt in range(max_retries):
             try:
-                await self.application.bot.set_webhook(url=webhook_url)
-                logger.info(f"Webhook set up at {webhook_url}")
+                # Clear any existing webhook first
+                await self.application.bot.delete_webhook()
+                await asyncio.sleep(2)  # Wait before setting new webhook
+                
+                # Set the new webhook
+                await self.application.bot.set_webhook(
+                    url=webhook_url,
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=True
+                )
+                
+                # Verify webhook was set correctly
+                webhook_info = await self.application.bot.get_webhook_info()
+                if not webhook_info.url or webhook_info.url != webhook_url:
+                    raise Exception("Webhook verification failed")
+                
+                logger.info(f"Webhook successfully set up and verified at {webhook_url}")
                 return
+                
             except Exception as e:
                 if "429" in str(e):  # Rate limit error
-                    delay = base_delay * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"Rate limit hit. Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
+                    # Exponential backoff with random jitter and increased delays
+                    jitter = random.uniform(0.1, 0.5) * base_delay
+                    delay = base_delay * (2 ** attempt) + jitter
+                    logger.warning(f"Rate limit hit. Retrying in {delay:.2f} seconds...")
+                    # Additional sleep time for rate limit
+                    await asyncio.sleep(delay + 2)  # Added extra second to base delay
                 else:
-                    raise
+                    logger.error(f"Error setting webhook: {str(e)}")
+                    if attempt == max_retries - 1:
+                        raise
 
         raise Exception(f"Failed to set webhook after {max_retries} attempts")
 

@@ -1,8 +1,8 @@
-import asyncio
 import os
 import signal
 import logging
-from typing import Optional
+import asyncio
+import random
 from bot_handlers import create_bot_application
 from re_engagement import run_re_engagement_system
 from context_manager import start_context_management
@@ -61,14 +61,26 @@ async def main():
             webhook_path = "telegram"
             webhook_url = f"{config.WEBHOOK_URL}/{webhook_path}"
             
-            # Start webhook server with retry mechanism
-            max_retries = 5
-            base_delay = 2
+            # Start webhook server with enhanced retry mechanism and verification
+            max_retries = 8
+            base_delay = 10  # Increased base delay
             
             for attempt in range(max_retries):
                 try:
+                    # Verify webhook isn't already set
+                    webhook_info = await bot_app.application.bot.get_webhook_info()
+                    if webhook_info.url:
+                        logger.info("Removing existing webhook...")
+                        await bot_app.application.bot.delete_webhook()
+                        await asyncio.sleep(2)  # Wait before setting new webhook
+                    
                     # Setup webhook first
                     await bot_app.setup_webhook()
+                    
+                    # Verify webhook was set correctly
+                    webhook_info = await bot_app.application.bot.get_webhook_info()
+                    if not webhook_info.url or webhook_info.url != webhook_url:
+                        raise Exception("Webhook verification failed")
                     
                     # Create and setup webhook application
                     web_app = await bot_app.create_webhook_app(
@@ -80,14 +92,17 @@ async def main():
                     await runner.setup()
                     site = web.TCPSite(runner, "0.0.0.0", config.WEBHOOK_PORT)
                     await site.start()
-                    logger.info(f"Webhook server started at {webhook_url}")
+                    logger.info(f"Webhook server started and verified at {webhook_url}")
                     break
                     
                 except Exception as e:
                     if "429" in str(e) and attempt < max_retries - 1:  # Rate limit error
-                        delay = base_delay * (2 ** attempt)
-                        logger.warning(f"Rate limit hit. Retrying webhook setup in {delay} seconds...")
-                        await asyncio.sleep(delay)
+                        # Exponential backoff with random jitter
+                        jitter = random.uniform(0.1, 0.5) * base_delay
+                        delay = base_delay * (2 ** attempt) + jitter
+                        logger.warning(f"Rate limit hit. Retrying webhook setup in {delay:.2f} seconds...")
+                        # Additional sleep time for rate limit
+                        await asyncio.sleep(delay + 1)
                         continue
                     raise
         else:
